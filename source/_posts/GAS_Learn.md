@@ -7,7 +7,6 @@ tag:
 - program
 - ue
 ---
-
 # 序言
 
 这是个人在GAS学习过程中的笔记，主要为本人学习GAS时，产生的疑惑和查证过程。这份笔记没有经过系统性的整理，对于不同层次的问题也没做区分，涉及到的内容也并不全面。
@@ -85,9 +84,9 @@ CommitAbility实际上做的就这些。所以在实际中感觉可以省略一�
 
 - 重新设置 **BaseValue** 和 **CurrentValue**, 此时 **PreAttributeChange** 会被第二次调用
 
+### GE修改BaseValue流程
 
-
-![GE](./GAS_Learn/GE1.png)
+![GE修改属性示意图.drawio](GAS_Learn/GE修改属性示意图.drawio.png)
 
 该图主要针对Instant持续类型的GE逻辑，其余类型会有不同
 
@@ -163,11 +162,17 @@ Modify是作为一个数据的提供部分，而Execution是作为一个具体�
 
 ## MMC（UGameplayModMagnitudeCalculation)
 
-在使用时，我们会简单的重写子类的 `CalculateBaseMagnitude_Implementation` 函数，它会根据GE传进的执行流程，对于要修改的属性进行处理。这个调用在不同种的GE执行流程中会有所不同，具体细节在 [GE在不同时序下的属性修改执行流程](#GE在不同时序下的属性修改执行流程) 中进行记录
+在使用时，我们会简单的重写子类的 `CalculateBaseMagnitude_Implementation` 函数，它会根据GE传进的执行流程，对于要修改的属性进行处理。这个调用在不同种的GE执行流程中会有所不同，具体细节在 [GE在不同时序下的属性修改执行流程](#GE在不同持续类型下的属性修改执行流程) 中进行记录
 
 ## EEC（UGameplayEffectExecutionCalculation）
 
 EEC的主要执行时间点在 `FActiveGameplayEffectsContainer::ExecuteActiveEffectsFrom`中，在**GE**的所有属性修改完成后执行**EEC**。在**AttributeSet**的 `PostGameplayEffectExecute` 后进行。
+
+> 正因为EEC的执行阶段在GE的ExecuteActiveEffectsFrom中，所以对于period为0的hasDuration和Infinite形式GE，不会触发EEC的执行。
+>
+> 对于period不为0的非instantGE，会在每个周期执行中进行。
+>
+> 对于预测的instantGE，这里应该也不会执行EEC，但是GE预测可能本身受限制较大
 
 ### FGameplayEffectCustomExecutionOutput
 
@@ -183,7 +188,15 @@ GE在实际使用过程中，并不会实例化。实际上实例化的为 **FAc
 
 因此可以说，AGE就是实际上处理角色身上具体一个个GE时的实例对象。
 
+## FGameplayEffectSpec::CalculateModifierMagnitudes
+
+对于一个GameplayEffectSpec，Modify的应用接口。各种GE执行都会调用这个接口进行属性计算
+
 ## GE在不同持续类型下的属性修改执行流程
+
+![不同持续类型下GE修改属性的执行流程](GAS_Learn/GE不同持续类型的执行逻辑.drawio.png)
+
+中间会提到Aggregator，在这个时候只需要了解到它是用于在BaseValue基础上更新CurrentValue的功能即可
 
 ### GE的初始进入调用流程 UAbilitySystemComponent::ApplyGameplayEffectSpecToSelf
 
@@ -210,17 +223,135 @@ GE初始的调用流程中，会到达ASC上的 `UAbilitySystemComponent::ApplyG
 
 ```
 
+
+
 ### InstantGE直接执行 UAbilitySystemComponent::ExecuteGameplayEffect
 
-在进入调用流程后，确认该GE为Instant且不为预测执行，则直接执行GE效果
+在进入调用流程后，确认该GE为Instant且不为预测执行，则直接执行GE效果应用，处理属性更改相关
+
+InstantGE即为瞬间的属性修改
 
 ### 非InstantGE执行 FActiveGameplayEffectsContainer::ApplyGameplayEffectSpec
 
-对于不会立即执行的GE，会调用 
+对于不会立即执行的GE，会调用该函数处理GE增加到ASC上的情况
 
-#### AppliedActiveGE GE的实际对象
+#### 确定AppliedActiveGE
 
-对于非Instant的GE，会存在堆叠增层的情况，因此如果会存在一个 **AppliedActiveGE**，用来确定这个流程中实际的 **AGE**。它可能是之前添加的需要被叠层的GE、
+对于非Instant的GE，会存在堆叠增层的情况，因此如果会存在一个 **AppliedActiveGE**，用来确定这个GE添加中实际的 **AGE**。它可能是之前**ASC**已经存在了的AGE，进行叠层处理、或是一个新的AGE。
+
+> 如果已经存在对应**AGE**，则预测时不会实际添加对象直接退回，即预测时不预测叠层情况。
+
+```c++
+// GameplayEffect.cpp:3612
+if (ExistingStackableGE)
+	{
+		if (!IsNetAuthority())
+		{
+			// Don't allow prediction of stacking for now
+			return nullptr;
+		}
+		// ...
+	
+}
+```
+
+##### 对于已经存在AGE处理GE层数累加
+
+如果已经存在了可以被堆叠的GE，则处理GE最大层数限制、多少层后变化的问题
+
+#### 计算属性修改 AppliedEffectSpec.CalculateModifierMagnitudes();
+
+根据GE上的Modify计算GE要修改的属性
+
+#### 重计算Duration
+
+在这个函数中，尝试重新计算Duration，因为实际Duration存在根据目标重新计算的情况。
+
+- 这种Duration调整只对本身Duration不为0的GE起效。
+- 对于调整后Duration小于等于0的情况，不会将其处理成Instant，会将其默认设置为0.1秒
+
+```c++
+//GameplayEffect.cpp:3748
+// Register Source and Target non snapshot capture delegates here
+	AppliedEffectSpec.CapturedRelevantAttributes.RegisterLinkedAggregatorCallbacks(AppliedActiveGE->Handle);
+	
+	// Re-calculate the duration, as it could rely on target captured attributes
+	float DefCalcDuration = 0.f;
+	if (AppliedEffectSpec.AttemptCalculateDurationFromDef(DefCalcDuration))
+	{
+		AppliedEffectSpec.SetDuration(DefCalcDuration, false);
+	}
+	else if (AppliedEffectSpec.Def->DurationMagnitude.GetMagnitudeCalculationType() == EGameplayEffectMagnitudeCalculation::SetByCaller)
+	{
+		AppliedEffectSpec.Def->DurationMagnitude.AttemptCalculateMagnitude(AppliedEffectSpec, AppliedEffectSpec.Duration);
+	}
+
+	const float DurationBaseValue = AppliedEffectSpec.GetDuration();
+
+	// Calculate Duration mods if we have a real duration
+	if (DurationBaseValue > 0.f)
+	{
+		float FinalDuration = AppliedEffectSpec.CalculateModifiedDuration();
+
+		// We cannot mod ourselves into an instant or infinite duration effect
+		if (FinalDuration <= 0.f)
+		{
+			ABILITY_LOG(Error, TEXT("GameplayEffect %s Duration was modified to %.2f. Clamping to 0.1s duration."), *AppliedEffectSpec.Def->GetName(), FinalDuration);
+			FinalDuration = 0.1f;
+		}
+
+		AppliedEffectSpec.SetDuration(FinalDuration, true);
+		// ...
+    }
+```
+
+#### 处理Period
+
+这里会将Period和常数0比较，大于常数0的即视为存在周期性循环的功能。
+
+通过指定GE在堆叠时的反应可以控制AGE堆叠时，是否重新调整周期
+
+> UGameplayEffect::NO_PERIOD = FGameplayEffectConstants::NO_PERIOD = 0
+
+#### 处理预测GE
+
+代码检查InPredictionKey是否为本地客户端键并且不是网络授权。如果是，将调用MarkArrayDirty强制重建内部复制映射。一旦复制的状态赶上了这个预测键，我们必须删除这个Gameplay Effect。
+
+如果InPredictionKey不是客户端本地键并且是网络授权的，则调用MarkItemDirty标记Active GE。然后，添加GE并输出详细信息，例如GE的名称、复制ID、复制键和预测键。
+
+#### GE开始属性修改
+
+已经存在的AGE调用AGE层数修改接口
+
+新添加的AGE，调用AGE激活接口
+
+### 总结
+
+从这里开始，整理出GE实际上分为两类逻辑。BaseValue逻辑和CurrentValue逻辑。
+
+#### BaseValueGE
+
+- instantGE、periodicGE使用
+- 主要点在于会执行`UAbilitySystemComponent::ExecuteGameplayEffect`函数，具体细节流程 [GE的BaseValue修改流程](#GE修改BaseValue流程) 
+- 由于会执行该函数，所以会处理**EEC**、**AttributeSet**的 `Pre/PostGameplayEffectExecute` 函数
+- BaseValue的值会间接引起CurrentValue的改动，所以也会间接调用 **AttributeSet**的 `Pre/PostAttributeChange`
+
+#### CurrentValueGE
+
+- 只有period为0的 hasDurationGE、 infiniteGE使用
+- 主要点在于会更改**Aggregator**的情况、用来修饰BaseValue、计算出最终的**CurrentValue**
+- 没有 `UAbilitySystemComponent::ExecuteGameplayEffect`， 所以**无法**执行**EEC**和 **AttributeSet**的 `Pre/PostGameplayEffectExecute`
+- 由于只调用到 `FActiveGameplayEffectsContainer::InternalUpdateNumericalAttribute` ，所以只会处理到 **AttributeSet**的 `Pre/PostAttributeChange`
+
+### 参考资料
+
+对于GE修改属性中产生的其他细节、可以尝试看看以下材料
+
+[GAS系统 ：GameplayEffect应用流程及Attribute修改](https://blog.csdn.net/qq_44687987/article/details/136189933)
+
+[UE GAS进阶-深入GE](https://juejin.cn/post/7359086027581931556)
+
+[GAS中的延迟与预测](https://mytechplayer.com/archives/yan-chi-he-yu-ce-hui-gun-gas)
 
 # AbilitySystemGlobals
 
