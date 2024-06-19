@@ -6,11 +6,14 @@ categories:
 tag:
 - program
 - ue
+date: 2024-06-17 00:00:00
+updated: 2024-06-19 20:33:00
 ---
 # 序言
 
 这是个人在GAS学习过程中的笔记，主要为本人学习GAS时，产生的疑惑和查证过程。这份笔记没有经过系统性的整理，对于不同层次的问题也没做区分，涉及到的内容也并不全面。
 
+**本文基于UE 5.3.2-release版本，不保证适用于其他版本！**
 
 # GameplayAbility
 
@@ -51,7 +54,7 @@ tag:
 
 通过ASC通知自己Commit了，发个广播。
 
-## 感想
+### 感想
 
 CommitAbility实际上做的就这些。所以在实际中感觉可以省略一部分内容。例如在动作游戏中可能根本不考虑CD和COST，而是以动作状态做判断时，就可以通过修改CommitAbility省去一部分。
 
@@ -61,11 +64,13 @@ CommitAbility实际上做的就这些。所以在实际中感觉可以省略一�
 
 # AttributeSet
 
-## FAttributeMetaData
+## FGameplayAttributeData
 
 老生常谈了，baseValue和CurrentValue不是当前和最大值的关系。单位都是float，实质上作为数值类型对象。
 
-有MinValue和MaxValue，目前没有对应逻辑限制，**所以没用**
+## FAttributeMetaData
+
+用于在编辑器显示的meta数据，有MinValue和MaxValue，目前没有对应逻辑限制，**所以没用**
 
 ## 属性限制 PreAttributeChange和PostGameplayEffectExecute
 
@@ -73,7 +78,7 @@ CommitAbility实际上做的就这些。所以在实际中感觉可以省略一�
 
 在使用对BaseValue的GE修改（即Instant或者具有period的Has Duration或者Infinite）我们对GE的修改大体可以看成如此流程。
 
-当我们做属性限制，比如生命值不超过最大值时，我们就有两个地方需要加入限制，**PreAttributeChanged **和 **PostGameplayEffectExecute**。
+当我们做属性限制，比如生命值不超过最大值时，我们就有两个地方需要加入限制，**PreAttributeChanged**和 **PostGameplayEffectExecute**。
 
 - GE开始修改，进行**BaseValue**的修改
 - 根据新的**BaseValue**算得新的**CurrnetValue**，第一次调用 **PreAttributeChange**，对于**CurrentValue**进行限制
@@ -88,7 +93,8 @@ CommitAbility实际上做的就这些。所以在实际中感觉可以省略一�
 
 ![GE修改属性示意图.drawio](GAS_Learn/GE修改属性示意图.drawio.png)
 
-该图主要针对Instant持续类型的GE逻辑，其余类型会有不同
+> UAttributeSet::Pre/PostAttributeBaseChange 并没有在那个知名GAS文档中提到，但是这并不代表这两个接口不能被正确使用
+>
 
 ## 当AttributeSet定义多个相同属性时，该如何操作
 
@@ -162,7 +168,7 @@ Modify是作为一个数据的提供部分，而Execution是作为一个具体�
 
 ## MMC（UGameplayModMagnitudeCalculation)
 
-在使用时，我们会简单的重写子类的 `CalculateBaseMagnitude_Implementation` 函数，它会根据GE传进的执行流程，对于要修改的属性进行处理。这个调用在不同种的GE执行流程中会有所不同，具体细节在 [GE在不同时序下的属性修改执行流程](#GE在不同持续类型下的属性修改执行流程) 中进行记录
+在使用时，我们会简单的重写子类的 `CalculateBaseMagnitude_Implementation` 函数，它会根据GE传进的执行流程，对于要修改的属性进行处理。这个调用在不同种的GE执行流程中会有所不同，具体细节在 [GE在不同时序下的属性修改执行流程](#GE在不同时序下的Attribute修改执行流程) 中进行记录
 
 ## EEC（UGameplayEffectExecutionCalculation）
 
@@ -192,7 +198,21 @@ GE在实际使用过程中，并不会实例化。实际上实例化的为 **FAc
 
 对于一个GameplayEffectSpec，Modify的应用接口。各种GE执行都会调用这个接口进行属性计算
 
-## GE在不同持续类型下的属性修改执行流程
+## FActiveGameplayEffectsContainer
+
+目前理解为**ASC**上一个处理各类**GE**的中间层，用于处理 **FActiveGameplayEffect** 的创建和生命周期。**ASC**上只存在一个用作中控。
+
+### FActiveGameplayEffectsContainer::GetAttributeBaseValue
+
+GE修改属性时，BaseValue的来源
+
+按顺序排列
+
+1. 如果 **Attribute** 是一个 **FGameplayAttributeData** 时，直接取用里面的BaseValue
+2. 如果存在**Aggregator**时，取**Aggregator**的**BaseValue**
+3. 由1不满足得到，**Attribute**为**float**类型，直接取float值
+
+## GE在不同时序下的Attribute修改执行流程
 
 ![不同持续类型下GE修改属性的执行流程](GAS_Learn/GE不同持续类型的执行逻辑.drawio.png)
 
@@ -327,7 +347,7 @@ if (ExistingStackableGE)
 
 ### 总结
 
-从这里开始，整理出GE实际上分为两类逻辑。BaseValue逻辑和CurrentValue逻辑。
+GE实际上分为两类逻辑。BaseValue逻辑和CurrentValue逻辑。
 
 #### BaseValueGE
 
@@ -343,7 +363,7 @@ if (ExistingStackableGE)
 - 没有 `UAbilitySystemComponent::ExecuteGameplayEffect`， 所以**无法**执行**EEC**和 **AttributeSet**的 `Pre/PostGameplayEffectExecute`
 - 由于只调用到 `FActiveGameplayEffectsContainer::InternalUpdateNumericalAttribute` ，所以只会处理到 **AttributeSet**的 `Pre/PostAttributeChange`
 
-### 参考资料
+### 推荐资料
 
 对于GE修改属性中产生的其他细节、可以尝试看看以下材料
 
@@ -352,6 +372,88 @@ if (ExistingStackableGE)
 [UE GAS进阶-深入GE](https://juejin.cn/post/7359086027581931556)
 
 [GAS中的延迟与预测](https://mytechplayer.com/archives/yan-chi-he-yu-ce-hui-gun-gas)
+
+[UE-GAS架构分析（三）（GameplayEffect）](https://zhuanlan.zhihu.com/p/464329488)
+
+## FGameplayEffectModifierMagnitude::AttemptCalculateMagnitude
+
+GE的数值计算，运行GE使用不同方式获取数值
+
+```c++
+//GameplayEffect.cpp:976
+bool FGameplayEffectModifierMagnitude::AttemptCalculateMagnitude(const FGameplayEffectSpec& InRelevantSpec, OUT float& OutCalculatedMagnitude, bool WarnIfSetByCallerFail, float DefaultSetbyCaller) const
+{
+	//...
+    switch (MagnitudeCalculationType)
+		{
+            case EGameplayEffectMagnitudeCalculation::ScalableFloat:
+            case EGameplayEffectMagnitudeCalculation::AttributeBased:
+            case EGameplayEffectMagnitudeCalculation::CustomCalculationClass:
+            case EGameplayEffectMagnitudeCalculation::SetByCaller:
+        	default:0;
+    	}
+    }
+}
+```
+
+
+
+# Aggregator
+
+Aggregator即可以理解为对于**FGameplayAttributeData**的**BaseValue**进行修饰计算得到**CurrentValue**。具体功能可参考 [Unreal GAS: Influence of the GameplayEffect aggregator on gameplay attribute values](https://stackoverflow.com/questions/52916274/unreal-gas-influence-of-the-gameplayeffect-aggregator-on-gameplay-attribute-val)。
+
+在存在Aggregator后，对于属性的修改都要通过**Aggregator**来实现（具体来说会通过一个**FAggregatorRef**的结构体来持有对象）。
+
+## Aggregator的创建和持有
+
+主要依赖于 `FActiveGameplayEffectsContainer::FindOrCreateAttributeAggregator` 函数，通过**FActiveGameplayEffectsContainer**保证，一个ASC上对于一个**FGameplayAttribute**最多只有一个唯一的**Aggregator**。
+
+创建本身是一种延迟生成，只有在用到时才会尝试为**FGameplayAttribute**创建对应的**Aggregator**。
+
+一旦创建后就不会考虑的移除，哪怕并没有对于**BaseValue**的数据调整, 也会通过 **Aggregator** 来设置**CurrentValue**。
+
+**FActiveGameplayEffectsContainer**会持有一个**AttributeAggregatorMap**来维护 **FGameplayAttribute** 和 **Aggregator**的关系。
+
+## FAggregatorModChannel
+
+可以理解为，一个channel即是一个基本的CurrentValue的修改流程。具体执行逻辑如下
+
+![Channel下GE执行逻辑](https://pic1.zhimg.com/v2-71007dd11f3a1b562a93785084c3d129_720w.jpg?source=d16d100b)
+
+此图来源于高贵纯合子
+
+## FAggregatorModChannelContainer
+
+一个**Aggregator**对应一个**FAggregatorModChannelContainer**。
+
+如**FActiveGameplayEffectsContainer**一样，这是个唯一的中间管理器，用来存储和处理它具备的**FAggregatorModChannel**。
+
+## FScopedAggregatorOnDirtyBatch
+
+RALL机制下的通知锁。利用析构机制触发广播。用来处理Aggregator改动后的广播通知
+
+## Aggregator和AttributeBased GE
+
+除去最直接的计算 **Attribute** 的**CurrentValue**外，**Aggregator**中有一大部分代码则是为了允许**GE**使用**Attribute**而处理。
+
+主要调用流程为`EGameplayEffectMagnitudeCalculation::AttributeBased`到`FAttributeBasedFloat::CalculateMagnitude`
+
+在**GE**使用过程中，可以直接捕获**ASC**上的**Attribute**作为属性来源。
+
+支持以下四种情况
+
+- AttributeBaseValue: BaseValue
+- AttributeMagnitude: CurrentValue
+- AttributeBonusMagnitude:  CurrentValue - BaseValue
+- AttributeMagnitudeEvaluatedUpToChannel：计算到指定channel的CurrentValue
+
+> 个人认为，**Aggregator**的**channel**机制就是为了GE捕获的自由度而开发的。如果存在使用不同等级乘区的需求的话，还可以考虑channel区分应用。实用性对于明确的多层乘区属性关系来说还是很大的。
+>
+> 但是对于存在并列且需要挑选的乘区需求的话，channel机制就没有办法进行正常处理了。而且channel也不能根据Attribute区分，导致实用性更差
+
+## 推荐材料
+
+[Attribute的current value是如何实现的？](https://juejin.cn/post/7359086027581931556#heading-3) 很推荐高贵纯合子对于GE的研究文章
 
 # AbilitySystemGlobals
 
