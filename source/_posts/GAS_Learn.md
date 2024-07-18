@@ -7,7 +7,7 @@ tag:
 - program
 - ue
 date: 2024-06-17 00:00:00
-updated: 2024-06-19 20:33:00
+updated: 2024-07-18 20:33:00
 ---
 # 前言
 
@@ -16,6 +16,29 @@ updated: 2024-06-19 20:33:00
 **本文基于UE 5.3.2-release版本，不保证适用于其他版本！**
 
 # GameplayAbility
+
+## 技能实例类型 EGameplayAbilityInstancingPolicy
+
+技能实例类型分为三种
+
+1. **NonInstanced**：表示技能不会被实例化，即每个玩家共享相同的技能实例。一旦一个玩家使用了某个技能，其他玩家也将受到影响。
+
+   > 非实例技能可以用于一些全局共享的机制，可以用于做某些全局玩家规则性增强。按理来说，也应该可以内部进行限制以实现队伍共享的效果。
+
+2. **InstancedPerActor**：表示技能会被实例化，并且每个角色（Actor）都会拥有自己的技能实例。每个角色都可以独立使用和管理自己的技能。
+
+3. **InstancedPerExecution**：表示技能会被根据每次执行实例化，即每次执行技能都会创建一个新的实例。这样可以确保每次执行技能时都有独立的实例。
+
+### UGameplayAbility::IsActive
+
+由于技能支持三种不同的实例类型，因此判断是否处于激活也是有不同标准
+
+- 存在 **bIsActive** 支持技能按角色实例化类型 **InstancedPerActor** 的激活判断，在角色身上技能区分激活和不激活
+- 对于剩下两种，技能本身Valid就视为激活。但是根据注释，不建议在不实例化技能中用此进行判断
+
+> this should not be called on NonInstanced warn about it, Should call IsActive on the ability spec instead
+
+
 
 ## CommitAbility
 
@@ -52,15 +75,42 @@ updated: 2024-06-19 20:33:00
 
 ### NotifyAbilityCommit
 
-通过ASC通知自己Commit了，发个广播。
+通过ASC通知自己Commit了，发 `AbilityCommittedCallbacks` 个广播。
+
+这个事件目前看只在 **UAbilityTask_WaitAbilityCommit** 一个直接相关AT、和 **AbilitySystemComponentTestSuite** 中注册一个信息显示的回调使用。某种程度上来说基本不必要。
 
 ### 感想
 
-CommitAbility实际上做的就这些。所以在实际中感觉可以省略一部分内容。例如在动作游戏中可能根本不考虑CD和COST，而是以动作状态做判断时，就可以通过修改CommitAbility省去一部分。
+CommitAbility实际上做的就这些。所以在实际中感觉可以省略一部分内容。
+
+例如在动作游戏中可能根本不考虑CD和COST，而是以动作状态做判断时，就可以通过修改CommitAbility省去一部分，感觉上甚至可以删除对应机制。
 
 提供了接口和事件提供手动施加CD和COST的能力。所以响应对应委托时会有区分。
 
-处理各种CD冷却啊，中途开始CD，额外CD的话都需要中途调整GE，原有机制难以处理。
+处理各种CD冷却啊，中途开始CD，额外CD的话都需要中途调整GE，原有机制难以处理。在CD机制复杂的技能中，可能根本没法使用。
+
+大量Cooldown和Cost的GE也会产生问题。
+
+
+
+## EndAbility
+
+用于结束技能的逻辑。
+
+在判断**bIsActive**的技能激活状态会晚于调用**K2_OnEndAbility**蓝图事件，因此有可能多次触发调用。
+
+### 步骤顺序
+
+1. 调用蓝图K2_OnEndAbility事件
+2. 对于Actor持有技能实例类**GA**检查是否已经停止激活，如已经未激活则结束步骤
+3. 清除LantentAction和Timer
+4. 广播技能结束事件
+5. 结束gameplayTask
+6. 移除gameplayTag相关内容
+
+### 结束回调
+
+**GA**结束时，会存在两个技能回调 **OnGameplayAbilityEnded** 和 **OnGameplayAbilityEndedWithData** 在这个过程中，**GA**的**bIsActive**仍然处于true的状态。但是对于不实例化**GA**会有一个 **bIsAbilityEnding**字段用来确认**GA**处于一个结束情况，
 
 # AttributeSet
 
@@ -78,7 +128,7 @@ CommitAbility实际上做的就这些。所以在实际中感觉可以省略一�
 
 在使用对BaseValue的GE修改（即Instant或者具有period的Has Duration或者Infinite）我们对GE的修改大体可以看成如此流程。
 
-当我们做属性限制，比如生命值不超过最大值时，我们就有两个地方需要加入限制，**PreAttributeChanged**和 **PostGameplayEffectExecute**。
+当我们做属性限制，比如生命值不超过最大值时，我们就有两个地方需要加入限制，**PreAttributeChanged **和 **PostGameplayEffectExecute**。
 
 - GE开始修改，进行**BaseValue**的修改
 - 根据新的**BaseValue**算得新的**CurrnetValue**，第一次调用 **PreAttributeChange**，对于**CurrentValue**进行限制
@@ -94,7 +144,6 @@ CommitAbility实际上做的就这些。所以在实际中感觉可以省略一�
 ![GE修改属性示意图.drawio](GAS_Learn/GE修改属性示意图.drawio.png)
 
 > UAttributeSet::Pre/PostAttributeBaseChange 并没有在那个知名GAS文档中提到，但是这并不代表这两个接口不能被正确使用
->
 
 ## 当AttributeSet定义多个相同属性时，该如何操作
 
@@ -228,7 +277,7 @@ GE初始的调用流程中，会到达ASC上的 `UAbilitySystemComponent::ApplyG
 
 - 网络权限是否可以应用GE
 - 是否有**ApplicationQuery** 可以阻止该GE执行
-- Spec是否可以成功应用 `Spec.Def->CanApply(ActiveGameplayEffects, Spec)`
+- Spec是否可以成功应用 `Spec.Def->CanApply(ActiveGameplayEffects, Spec)`。会调用到 **CAR** 进行判断
 - 涉及到的的Modifiers均有效，所有Attribute均可以使用
 
 > 这部分判断条件细节均不了解，只是按copilot和注释先判断一个作用，先略过
@@ -396,7 +445,9 @@ bool FGameplayEffectModifierMagnitude::AttemptCalculateMagnitude(const FGameplay
 }
 ```
 
+## CAR(UGameplayEffectCustomApplicationRequirement)和UCustomCanApplyGameplayEffectComponent
 
+教程中提到的一个判断**GE**能否添加的内容，在 **UE5.3**中挪到 **UCustomCanApplyGameplayEffectComponent** 中。作为判断GE能否添加的条件判断。在 `UAbilitySystemComponent::ApplyGameplayEffectSpecToSelf`中调用。也就是GE添加第一部。
 
 # Aggregator
 
@@ -427,6 +478,29 @@ Aggregator即可以理解为对于**FGameplayAttributeData**的**BaseValue**进�
 一个**Aggregator**对应一个**FAggregatorModChannelContainer**。
 
 如**FActiveGameplayEffectsContainer**一样，这是个唯一的中间管理器，用来存储和处理它具备的**FAggregatorModChannel**。
+
+### EGameplayModEvaluationChannel
+
+一组枚举，通过枚举用于和不同的 **FAggregatorModChannel** 对应上。存储为一个TMap **ModChannelsMap**
+
+```c++
+// GameplayEffectAggregatir.cpp:209
+FAggregatorModChannel& FAggregatorModChannelContainer::FindOrAddModChannel(EGameplayModEvaluationChannel Channel)
+{
+	FAggregatorModChannel* FoundChannel = ModChannelsMap.Find(Channel);
+	if (!FoundChannel)
+	{
+		// Adding a new channel, need to resort the map to preserve key order for evaluation
+		ModChannelsMap.Add(Channel);
+		ModChannelsMap.KeySort(TLess<EGameplayModEvaluationChannel>());
+		FoundChannel = ModChannelsMap.Find(Channel);
+	}
+	check(FoundChannel);
+	return *FoundChannel;
+}
+```
+
+
 
 ## FScopedAggregatorOnDirtyBatch
 
@@ -459,5 +533,44 @@ RALL机制下的通知锁。利用析构机制触发广播。用来处理Aggrega
 
 ### ShouldIgnoreCooldowns() 和 ShouldIgnoreCosts()
 
-GA发动时是否要检测 CoolDownGE和 CostGE
+GA发动时是否要检测 CoolDownGE和 CostGE，全局设置，猜测为Debug方便的使用？
+
+# AbilityTask
+
+## WaitTargetData和TargetActor
+
+- 通过 `UAbilityTask_WaitTargetData` 创建一个`AGameplayAbilityTargetActor`，并且等待相应事件。
+
+- 通过`AGameplayAbilityTargetActor`封装碰撞、检测、指示显示等功能。回传锁定目标以选择对象。
+- `UAbilityTask_WaitTargetData`会将它创建的 `AGameplayAbilityTargetActor` 全部挂接到 **ASC** 上。
+- **TargetActor**主要通过重载 `AGameplayAbilityTargetActor::StartTargeting`和 `AGameplayAbilityTargetActor::ConfirmTargetingAndContinue`用于实现在创建和确认时进行内容的功能
+- 在通过**TargetDataReadyDelegate**接受到，除非自行设置了 **EGameplayTargetingConfirmation：CustomMulti**
+
+这两者基本是绑定的使用关系
+
+### Confirm/Cancel 确认/取消寻找目标
+
+**TargetActor**实际上有两个节点。
+
+1. 开始确认，调用 `TargetActor:ConfirmTargeting`。主要会调用到 `AGameplayAbilityTargetActor:ConfirmTargetingAndContinue` 进行瞬间的筛选。然后会自行销毁掉。
+2. 抛出有价值数据。调用**TargetDataReadyDelegate**委托，一般会在**ConfirmTargetingAndContinue**中抛出，但是也可以通过Tick等其他方式在满足条件后抛出。
+
+**UAbilityTask_WaitTargetData** 存在以下几种确认机制，用枚举 **EGameplayTargetingConfirmation** 区分
+
+- **Instant**：TargetActor生成立刻检测。检测完立即自动销毁。
+- **UserConfirmed**：等待一个输入开始最终确认，这个选择会触发 **BindToConfirmCancelInputs** 。个人觉得意义不大
+- **Custom**:  没有绑定也没有特殊处理。基本上来说反而是实质上最多的场景，等待其他方式触发（如**ASC **的 **TargetConfirm**） 或者自行决定触发
+- **CustomMulti**: 用于在**TargetActor** 的 **TargetDataReadyDelegate** 触发后，概念上可以多次触发，所以不会**EndTask**。
+
+#### AGameplayAbilityTargetActor::BindToConfirmCancelInputs
+
+里面封装了一些基于**InputID**的确认和取消触发，但是在**EnhencedInput**的大背景下，个人认为使用价值不大。
+
+#### UAbilitySystemComponent::TargetConfirm
+
+ASC中，存在 `UAbilitySystemComponent::TargetConfirm` 和 `UAbilitySystemComponent::TargetCancel`，用于对身上的所有`TargetActor:ConfirmTargeting` 统一触发。
+
+### 多次确认
+
+综上所述，如果希望一个TargetActor能够多次触发Task的话。**AT**需要定义为 **CustomMulti**类型以避免触发后结束。**TargetActor**中不进行确认，而是通过Tick等方式多次抛出有效数据储备完成的 **TargetDataReadyDelegate** 委托。最后再通过其他方式**EndTask**并且销毁**TargetActor**。应该是属于一个比较进阶的功能设计
 
