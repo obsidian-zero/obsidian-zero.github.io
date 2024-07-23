@@ -7,7 +7,7 @@ tag:
 - program
 - ue
 date: 2024-06-17 00:00:00
-updated: 2024-07-18 20:33:00
+updated: 2024-07-23 20:00:00
 ---
 # 前言
 
@@ -535,6 +535,15 @@ RALL机制下的通知锁。利用析构机制触发广播。用来处理Aggrega
 
 GA发动时是否要检测 CoolDownGE和 CostGE，全局设置，猜测为Debug方便的使用？
 
+### 全局提供特定数据/管理器
+
+通过静态函数提供自己的单例实例。再提供一些全局通用的功能。
+
+- **GetGameplayCueManager**： 提供了GCManager的接口，用于游戏中触发GC。
+- **GetGameplayTagResponseTable**：提供游戏标签响应表，这是一个可以指定游戏标签与特定的响应函数之间的关联。这样，当某个游戏标签被激活时，可以自动调用相应的响应函数进行处理，比如触发特定的事件、改变角色状态、执行特定的逻辑等。
+
+提供了部分
+
 # AbilityTask
 
 ## WaitTargetData和TargetActor
@@ -574,3 +583,232 @@ ASC中，存在 `UAbilitySystemComponent::TargetConfirm` 和 `UAbilitySystemComp
 
 综上所述，如果希望一个TargetActor能够多次触发Task的话。**AT**需要定义为 **CustomMulti**类型以避免触发后结束。**TargetActor**中不进行确认，而是通过Tick等方式多次抛出有效数据储备完成的 **TargetDataReadyDelegate** 委托。最后再通过其他方式**EndTask**并且销毁**TargetActor**。应该是属于一个比较进阶的功能设计
 
+# GameplayCue
+
+GameplayCue(**GC**)是用于作为和逻辑无关的纯视效表现，例如特效，音效，镜头效果等功能。
+
+## InvokeGameplayCueEvent
+
+Gameplay一个很特异的点在于，在使用时并不是指定一个具体的**GC**类。而是通过**GameplayTag**来间接使用。
+
+### UGameplayCueManager::HandleGameplayCue
+
+这是调用GameplayCue的最终入口。
+
+在**ASC**中往往通过GE添加、直接触发等方式最终到 `UAbilitySystemComponent::InvokeGameplayCueEvent` 函数。
+
+然后再调用`UAbilitySystemGlobals::Get().GetGameplayCueManager()->HandleGameplayCue`使用。
+
+这个函数最终会调用到 `UGameplayCueSet::HandleGameplayCueNotify_Internal` 中
+
+### UGameplayCueSet::HandleGameplayCueNotify_Internal
+
+```c++
+// GameplayCueSet.cpp:259
+bool UGameplayCueSet::HandleGameplayCueNotify_Internal(AActor* TargetActor, int32 DataIdx, EGameplayCueEvent::Type EventType, FGameplayCueParameters& Parameters)
+{	
+    // DataIdx 是外层调用用于找到对应GameplayCue的序号，其他效果无关
+	bool bReturnVal = false;
+
+	//...
+
+	if (DataIdx != INDEX_NONE)
+	{
+		// 找到Tag对应的数据
+
+		FGameplayCueNotifyData& CueData = GameplayCueData[DataIdx];
+
+		Parameters.MatchedTagName = CueData.GameplayCueTag;
+
+		const bool bDebugFailLoads = CVarGameplayCueFailLoads.GetValueOnGameThread();
+
+		// 处理资源未加载的一些问题，不重要，略过
+		if (CueData.LoadedGameplayCueClass == nullptr || bDebugFailLoads)
+		{
+			CueData.LoadedGameplayCueClass = Cast<UClass>(CueData.GameplayCueNotifyObj.ResolveObject());
+			if (CueData.LoadedGameplayCueClass == nullptr || bDebugFailLoads)
+			{
+				if (!CueManager->HandleMissingGameplayCue(this, CueData, TargetActor, EventType, Parameters))
+				{
+					return false;
+				}
+			}
+		}
+
+		// 先尝试对应的是否为GameplayCueNotify_Static对象
+		if (UGameplayCueNotify_Static* NonInstancedCue = Cast<UGameplayCueNotify_Static>(CueData.LoadedGameplayCueClass->ClassDefaultObject))
+		{
+			if (NonInstancedCue->HandlesEvent(EventType))
+			{
+				NonInstancedCue->HandleGameplayCue(TargetActor, EventType, Parameters);
+				bReturnVal = true;
+                // 未确认重载时调用父Tag层级处理
+				if (!NonInstancedCue->IsOverride)
+				{
+					HandleGameplayCueNotify_Internal(TargetActor, CueData.ParentDataIdx, EventType, Parameters);
+				}
+			}
+			else
+			{
+				//如果失败的话，尝试查找上一层的gameplayTag。即A.B.C中的 B
+				HandleGameplayCueNotify_Internal(TargetActor, CueData.ParentDataIdx, EventType, Parameters);
+			}
+		}
+        // 对应的是否为GameplayCueNotify_Actor对象
+		else if (AGameplayCueNotify_Actor* InstancedCue = Cast<AGameplayCueNotify_Actor>(CueData.LoadedGameplayCueClass->ClassDefaultObject))
+		{
+			bool bShouldDestroy = false;
+            // 如果Cue事件不是添加或激活，这个Cue未对应着一个Effect激活（即为Effect duration结束），且对应Notify_Actor有自动销毁配置。则说明Cue是需要销毁了
+			if (EventType == EGameplayCueEvent::Executed && !Parameters.bGameplayEffectActive && InstancedCue->bAutoDestroyOnRemove)
+			{
+				bShouldDestroy = true;
+			}
+
+			if (InstancedCue->HandlesEvent(EventType))
+			{
+				if (TargetActor)
+				{
+					TSubclassOf<AGameplayCueNotify_Actor> InstancedClass = InstancedCue->GetClass();
+
+					//确认TargetActor上是否有Cue的实例了，没有会在调用创建一个
+					AGameplayCueNotify_Actor* SpawnedInstancedCue = CueManager->GetInstancedCueActor(TargetActor, InstancedClass, Parameters);
+					
+                    SpawnedInstancedCue->HandleGameplayCue(TargetActor, EventType, Parameters);
+                    bReturnVal = true;
+                    
+                    //同理，未确认重载时调用父Tag层级处理
+                    if (!SpawnedInstancedCue->IsOverride)
+                    {
+                        HandleGameplayCueNotify_Internal(TargetActor, CueData.ParentDataIdx, EventType, Parameters);
+                    }
+					//如果满足自动销毁条件，就让其自动销毁
+                    if (bShouldDestroy)
+                    {
+                        SpawnedInstancedCue->HandleGameplayCue(TargetActor, EGameplayCueEvent::Removed, Parameters);
+                    }
+				}
+			}
+			else
+			{
+				//这个Tag根本没有任何数据时，会尝试用父类处理
+				HandleGameplayCueNotify_Internal(TargetActor, CueData.ParentDataIdx, EventType, Parameters);
+			}
+		}
+	}
+
+	return bReturnVal;
+}
+```
+
+可以注意到。在存在对应Tag的时。会通过Override这个字段尝试是否尝试执行父类Tag。这个初次看可能觉得逻辑比较混乱，有时判断，有时不判断。实际上这个功能很好理解。
+
+> /** Does this Cue override other cues, or is it called in addition to them? E.g., If this is Damage.Physical.Slash, we wont call Damage.Physical afer we run this cue. */
+>
+> UPROPERTY(EditDefaultsOnly, Category = GameplayCue)
+> bool IsOverride;
+
+- 如果对应的Notify成功应用了。如果确定是Override，就不会再尝试应用父类Tag
+- 如果根本没应用成功，会尝试按照父类Tag处理
+
+## EGameplayCueEvent
+
+gameplayCue总计有四种类型
+
+```c++
+namespace EGameplayCueEvent
+{
+	/** 指示特定游戏界面提示标签发生了哪种类型的操作。有时您会同时收到多个事件 */
+	enum Type : int
+	{
+		/** 当一个具有持续时间的GameplayCue首次激活时调用，仅在客户端激活时才会调用此方法 */
+		OnActive,
+
+		/** 当一个具有持续时间的GameplayCue首次被视为处于活动状态时调用，即使它实际上没有被应用（加入进行中等情况）也会是如此 */
+		WhileActive,
+
+        /** 当执行GameplayCue时调用，这用于即时效果或定期周期性执行的效果，即BaseValue修改时使用 */
+		Executed,
+
+		/** 当移除具有持续时间的GameplayCue时调用 */
+		Removed
+	};
+}
+
+```
+
+可以从中理解到，**Cue**完全是为了和**GE**联动使用的。
+
+而结合上一步的触发分析，可以确认，只有**CurrentValue**类型**GE**会由**GE**辅助**Cue**的生命周期管理。对于**BaseValue**类型的瞬时效果，都需要**Cue**自行管理。
+
+## GameplayCue的类多态特性
+
+通过的**GameplayTag**施加的**GC**并非指定不变的。当普通攻击到人身上会出现血，但是到树上自然不应该出现血，需要有一个机制来进行转换。
+
+完全可以指定一个**GameplayTag**，但是对于某些特定的Actor来说，实际使用的**GC**却对应的另外的**GameplayTag**。这种**GameplayTag**之间的转化和Actor的对应关系就存在 **GameplayCueTranslationManager** 中。
+
+```c++
+// GameplayCueTranslator.cpp:509，调用发生点在 GameplayCueManager.cpp:154 GameplayCueManager::TranslateGameplayCue 中
+bool FGameplayCueTranslationManager::TranslateTag_Internal(FGameplayCueTranslatorNode& Node, FGameplayTag& OutTag, const FName& TagName, AActor* TargetActor, const FGameplayCueParameters& Parameters)
+{
+    //Node应该是一个保存了GameplayTag的转换关系和判定条件的类型
+	for (FGameplayCueTranslationLink& Link : Node.Links)
+	{
+		// Node需要本身实现如何根据Actor转换出GameplayTag的转换的TranslationIndex
+		int32 TranslationIndex = Link.RulesCDO->GameplayCueToTranslationIndex(TagName, TargetActor, Parameters);
+		if (TranslationIndex != INDEX_NONE)
+		{
+			// 根据TranslationIndex，从Node存储的属性中再次获取到一个NodeIndex
+			FGameplayCueTranslatorNodeIndex NodeIndex = Link.NodeLookup[TranslationIndex];
+			if (NodeIndex.IsValid())
+			{
+				
+				// 根据NodeIndex, 从整个FGameplayCueTranslationManager中找到一个对应的InnerNode
+				FGameplayCueTranslatorNode& InnerNode = TranslationLUT[NodeIndex];
+				// 根据InnerNode获取到一个gameplayTag
+				OutTag = InnerNode.CachedGameplayTag;
+				// 对这个GameplayTag递归尝试转换
+				TranslateTag_Internal(InnerNode, OutTag, InnerNode.CachedGameplayTagName, TargetActor, Parameters);
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+```
+
+- `GameplayCueToTranslationIndex`在源代码中给出了一个示例。用于以不同Actor类型来确认对应Index。示例不具备可用性，需要完成实际继承正确实现。
+- 这个代码会递归调用，也就是说这个可以发生多次转换以找到最终应该出现的**GameplayTag**
+- 最初的`Node` 来源于 **FGameplayCueTranslationManager**储存的一个TMap规定了一个**GameplayTag**到Node的最初节点
+- 这个功能看起来并没有完全处理好，并不像是即开即用的样子
+
+## GameplayCueManager
+
+一个全局的GameplayCue的管理器，所有**GameplayCue**的管理功能均从这里开始
+
+通过 **AbilitySystemGlobals** 来获取全局单例
+
+### FGameplayCueTranslationManager
+
+- 实现上文所提到的**GameplayTag**转换都在这个Manger中完成。
+
+- Manager本身绑定在**GameplayCueManager(GCM)**中，而**GCM**本身是单例式的，可以视为它也是单例
+
+- 存在 **TranslationNameToIndexMap** 用于存储最早的**GameplayTag**到**FGameplayCueTranslatorNode**关系。
+
+  这是一个自动生成的表，在 `FGameplayCueTranslationManager::BuildTagTranslationTable_Forward_r`中，这个有空再研究。
+
+- 存在**TranslationLUT**一个TArray存储了所有的**FGameplayCueTranslatorNode**
+
+- **FGameplayCueTranslatorNode**是一个主要使用的结构体，用来存储相关性
+
+### UGameplayCueSet
+
+- 用于保存**gameplayTag**到实际实现**Cue**的**Actor**间的相关联系
+- 全局唯一，保存在**RuntimeGameplayCueObjectLibrary**中
+- 引擎开始时自动生成
+- 使用**FGameplayCueNotifyData**结构体，来存储`GameplayCueTag`到 `GameplayCueNotifyObj`的之间联系
+
+## 参考材料
+
+[【UE】记录GameplayCue执行流程](https://zhuanlan.zhihu.com/p/693591783)
