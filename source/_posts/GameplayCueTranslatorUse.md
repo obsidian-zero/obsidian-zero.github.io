@@ -230,7 +230,7 @@ int32 UDamageTypeGameplayCueTranslator::GameplayCueToTranslationIndex(const FNam
 在**GameplayCueTranslatorManager**中的相关代码。这里会自动遍历所有的子类并进行排序。通过定义的 `UGameplayCueTranslator:GetPriority` 和 `UGameplayCueTranslator:IsEnabled` 函数来得到优先级和启用情况
 
 ```c++
-//gameplayCueTranslator.cpp
+//GameplayCueTranslator.cpp:130
 void FGameplayCueTranslationManager::RefreshNameSwaps()
 {
 	AllNameSwaps.Reset();
