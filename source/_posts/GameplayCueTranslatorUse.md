@@ -7,7 +7,7 @@ tag:
 - program
 - ue
 date: 2024-07-24 00:09:27
-updated: 2024-07-24 00:09:27
+updated: 2024-07-31 12:52:00
 ---
 
 # 前言
@@ -109,40 +109,6 @@ public:
 };
 ```
 
-### 相关了解
-
-大部分情况下，不需要手动配置有哪些GameplayCueTranslator，也不必关注他们的启用情况。
-
-如果好奇的话，可以参考GameplayCueTranslatorManager中的相关代码。这里会自动遍历所有的子类并进行排序。
-
-```c++
-//gameplayCueTranslator.cpp
-void FGameplayCueTranslationManager::RefreshNameSwaps()
-{
-	AllNameSwaps.Reset();
-	TArray<UGameplayCueTranslator*> CDOList;
-
-	// 自动遍历所有Uclass，以找到可用的UGameplayCueTranslator
-	for( TObjectIterator<UClass> It ; It ; ++It )
-	{
-		UClass* Class = *It;
-        if(Class->IsChildOf(UGameplayCueTranslator::StaticClass()))
-        {
-            UGameplayCueTranslator* CDO = Class->GetDefaultObject<UGameplayCueTranslator>();
-            if (CDO->IsEnabled())
-            {
-                CDOList.Add(CDO);
-            }
-        }
-	}
-    // 根据优先级排序
-	CDOList.Sort([](const UGameplayCueTranslator& A, const UGameplayCueTranslator& B) { return (A.GetPriority() > B.GetPriority()); });
-
-	// ...
-}
-
-```
-
 ## 声明可能存在的转换关系
 
 在Translator类中，需要先声明可能发生的转换关系。声明相关代码如图所示。
@@ -199,9 +165,122 @@ void UDamageTypeGameplayCueTranslator::GetTranslationNameSpawns(TArray<FGameplay
   >
   > `FGameplayTagContainer AllGameplayCueTags = TagManager->RequestGameplayTagChildren(UGameplayCueSet::BaseGameplayCueTag());`
 
-### 相关了解
 
-这里是转换关系的生成逻辑
+
+## 实现转换的具体逻辑
+
+这一步需要实现 `GameplayCueToTranslationIndex`函数，用于根据Actor来判断是否需要进行GameplayTag的转换。
+
+这个函数需要返回对应的序号，如果不转换的话，返回`INDEX_NONE`即可。
+
+```c++
+//#include "AbilitySystemComponent.h"
+//#include "GameplayTagContainer.h"
+
+int32 UDamageTypeGameplayCueTranslator::GameplayCueToTranslationIndex(const FName& TagName, AActor* TargetActor, const FGameplayCueParameters& Parameters) const
+{
+	if (!TargetActor)
+	{
+		return INDEX_NONE;
+	}
+
+	// 尝试获取 AbilitySystemComponent
+	UAbilitySystemComponent* ASC = TargetActor->FindComponentByClass<UAbilitySystemComponent>();
+	if (!ASC)
+	{
+		return INDEX_NONE;
+	}
+
+	// 根据Actor身上的GamePlayTag进行匹配，这里可以换任意实现思路
+	FGameplayTag BlazeTag = FGameplayTag::RequestGameplayTag(FName("TranCue.State.Blaze"));
+	if (ASC->HasMatchingGameplayTag(BlazeTag))
+	{
+        //返回声明时FGameplayCueTranslationNameSwap在SwapList中的序号
+		return 0;
+	}
+	FGameplayTag DarkTag = FGameplayTag::RequestGameplayTag(FName("TranCue.State.Dark"));
+	if (ASC->HasMatchingGameplayTag(DarkTag))
+	{
+        //返回声明时FGameplayCueTranslationNameSwap在SwapList中的序号
+		return 1;
+	}
+	
+	return INDEX_NONE;
+}
+```
+
+这样子就实现了一个完整的GameplayTranslator逻辑
+
+# 深入分析
+
+在完成了实际操作后，就相当于了解了GameplayTranslator的使用方式了。
+
+以下的部分，就是对相关代码的进一步分析。对于简单的应用使用来说，已经足够了。鉴于这个设计的完善性，可以说按照直觉来用的话应该都不会出问题。
+
+这里的深入分析主要出于回答以下几个问题：
+
+- 如何确定哪些`UGameplayCueTranslator`在使用？
+- 转换关系是一个树状结构？那么这些节点具体如何记录的消息？
+- 定义多个不一样的 `UGameplayCueTranslator` 对于相同CueTag的转换会发生什么？如何保证的正确性？
+
+## 确定可用转换类 FGameplayCueTranslationManager::RefreshNameSwaps
+
+大部分情况下，不需要手动配置有哪些**GameplayCueTranslator**，也不必关注他们的启用情况。
+
+在**GameplayCueTranslatorManager**中的相关代码。这里会自动遍历所有的子类并进行排序。通过定义的 `UGameplayCueTranslator:GetPriority` 和 `UGameplayCueTranslator:IsEnabled` 函数来得到优先级和启用情况
+
+```c++
+//gameplayCueTranslator.cpp
+void FGameplayCueTranslationManager::RefreshNameSwaps()
+{
+	AllNameSwaps.Reset();
+	TArray<UGameplayCueTranslator*> CDOList;
+
+	// 自动遍历所有Uclass，以找到可用的UGameplayCueTranslator
+	for( TObjectIterator<UClass> It ; It ; ++It )
+	{
+		UClass* Class = *It;
+        if(Class->IsChildOf(UGameplayCueTranslator::StaticClass()))
+        {
+            UGameplayCueTranslator* CDO = Class->GetDefaultObject<UGameplayCueTranslator>();
+            if (CDO->IsEnabled())
+            {
+                CDOList.Add(CDO);
+            }
+        }
+	}
+    // 根据优先级排序
+	CDOList.Sort([](const UGameplayCueTranslator& A, const UGameplayCueTranslator& B) { return (A.GetPriority() > B.GetPriority()); });
+
+	// ...
+}
+
+```
+
+## 转换节点关系 FGameplayCueTranslationManager.TranslationLUT
+
+这个数据结构记录了所有参与了转换的GameplayCueTag节点，每个节点对应着一个GameplayCueTag, 节点为一个**FGameplayCueTranslatorNode**的结构体。
+
+![image-20240730235431139](./GameplayCueTranslatorUse/image-20240730235431139.png)
+
+![image-20240730235410461](./GameplayCueTranslatorUse/image-20240730235410461.png)
+
+简单用断点就可以看出来具体的转换信息存储的方式。
+
+- **TranslatorNode**对应着每一个参加转换的**GameplayCueTag**
+- **TranslatorNode**记录下的**Links**为**FGameplayCueTranslationLink**结构体,  实际是代表着所以会对这个**CueTag**进行转换的**Translator**
+- 每一条**Link**通过**NodeLookup**将自己在**Swaplist**中的顺序和**TranslationLUT**中的序号关联起来，以达成和和**GueTag**的关联
+- **Link**是按照**Translator**进行区分的，在不同**Link**中会存在相同的**Translator**
+
+在得到上述结论之后，就可以更清晰地了解具体转换时的发生逻辑了，总结及时如下图。
+
+![image](./GameplayCueTranslatorUse/GameplayCueTranslator部分结构.drawio.PNG)
+
+
+
+## 转换关系生成 GameplayCueTranslator:BuildTagTranslationTable_r
+
+这里是转换关系的具体生成逻辑。
 
 ```c++
 // GameplayCueTranslator.cpp:266
@@ -262,7 +341,7 @@ for (int32 TagIdx=0; TagIdx < SplitNames.Num(); ++TagIdx)
 
                 if (HasValidRootTag)
                 {
-                    // 在转换链中生成fromName到toName的转换链
+                    // 在转换链中生成fromName到toName的转换Link
                     FGameplayCueTranslatorNodeIndex ParentIdx = GetTranslationIndexForName(ComposedName, true);
                  
                     FGameplayCueTranslatorNodeIndex ChildIdx = GetTranslationIndexForName(TagName, true);
@@ -304,80 +383,9 @@ for (int32 TagIdx=0; TagIdx < SplitNames.Num(); ++TagIdx)
 }
 ```
 
-## 实现转换的具体逻辑
-
-这一步需要实现 `GameplayCueToTranslationIndex`函数，用于根据Actor来判断是否需要进行GameplayTag的转换。
-
-这个函数需要返回对应的序号，如果不转换的话，返回`INDEX_NONE`即可。
-
-```c++
-//#include "AbilitySystemComponent.h"
-//#include "GameplayTagContainer.h"
-
-int32 UDamageTypeGameplayCueTranslator::GameplayCueToTranslationIndex(const FName& TagName, AActor* TargetActor, const FGameplayCueParameters& Parameters) const
-{
-	if (!TargetActor)
-	{
-		return INDEX_NONE;
-	}
-
-	// 尝试获取 AbilitySystemComponent
-	UAbilitySystemComponent* ASC = TargetActor->FindComponentByClass<UAbilitySystemComponent>();
-	if (!ASC)
-	{
-		return INDEX_NONE;
-	}
-
-	// 根据Actor身上的GamePlayTag进行匹配，这里可以换任意实现思路
-	FGameplayTag BlazeTag = FGameplayTag::RequestGameplayTag(FName("TranCue.State.Blaze"));
-	if (ASC->HasMatchingGameplayTag(BlazeTag))
-	{
-        //返回声明时FGameplayCueTranslationNameSwap在SwapList中的序号
-		return 0;
-	}
-	FGameplayTag DarkTag = FGameplayTag::RequestGameplayTag(FName("TranCue.State.Dark"));
-	if (ASC->HasMatchingGameplayTag(DarkTag))
-	{
-        //返回声明时FGameplayCueTranslationNameSwap在SwapList中的序号
-		return 1;
-	}
-	
-	return INDEX_NONE;
-}
-```
-
-这样子就实现了一个完整的GameplayTranslator逻辑
-
-# 深入分析
-
-在完成了实际操作后，就相当于了解了GameplayTranslator的使用方式了。
-
-以下的部分，就是对相关代码的进一步分析。对于简单的应用使用来说，已经足够了。鉴于这个设计的完善性，可以说按照直觉来用的话应该都不会出问题。
-
-这里的深入分析主要出于回答以下几个问题：
-
-- 定义多个不一样的 `UGameplayCueTranslator` 对于相同CueTag的转换会发生什么？如何保证的正确性？
-- 转换关系是一个树状结构？那么这些节点具体如何记录的消息？
-
-## FGameplayCueTranslationManager.TranslationLUT
-
-这个数据结构记录了所有参与了转换的GameplayCueTag节点，每个节点对应着一个GameplayCueTag, 节点为一个**FGameplayCueTranslatorNode**的结构体。
-
-![image-20240730235431139](./GameplayCueTranslatorUse/image-20240730235431139.png)
-
-![image-20240730235410461](./GameplayCueTranslatorUse/image-20240730235410461.png)
-
-简单用断点就可以看出来具体的转换信息存储的方式。
-
-- **TranslatorNode**对应着每一个参加转换的**GameplayCueTag**
-- **TranslatorNode**记录下的**Links**为**FGameplayCueTranslationLink**结构体,  实际是代表着所以会对这个**CueTag**进行转换的**Translator**
-- 每一条**Link**通过**NodeLookup**将自己在**Swaplist**中的顺序和**TranslationLUT**中的序号关联起来，以达成和和**GueTag**的关联
-- **Link**是对应着**Translator**的，在不同**TranslatorNode**中会存在相同的**Link**
-
-在得到上述结论之后，就可以更清晰地了解具体转换时的发生逻辑了
 
 
-## FGameplayCueTranslationManager::TranslateTag_Internal
+## 转换过程 FGameplayCueTranslationManager::TranslateTag_Internal
 
 这个函数就是转换的具体逻辑了，代码如下
 
@@ -387,35 +395,38 @@ bool FGameplayCueTranslationManager::TranslateTag_Internal(FGameplayCueTranslato
 {
     for (FGameplayCueTranslationLink& Link : Node.Links)
     {
-       // Have CDO give us TranslationIndex. This is 0 - (number of name swaps this class gave us)
+       // Translator尝试判断是否满足转换条件，满足的话返回可用的转换序号
        int32 TranslationIndex = Link.RulesCDO->GameplayCueToTranslationIndex(TagName, TargetActor, Parameters);
        if (TranslationIndex != INDEX_NONE)
        {
           if (Link.NodeLookup.IsValidIndex(TranslationIndex) == false)
           {
-             UE_LOG(LogGameplayCueTranslator, Error, TEXT("FGameplayCueTranslationManager::TranslateTag_Internal %s invalid index %d was returned from GameplayCueToTranslationIndex. NodeLookup.Num=%d. Tag %s"), *GetNameSafe(Link.RulesCDO), TranslationIndex, Link.NodeLookup.Num(), *TagName.ToString());
+             // 避免给出的是一个错误序号
              continue;
           }
 
-          // Use the link's NodeLookup to get the real NodeIndex
+          // 将序号通过NodeLookup转换成TranslatorNode的序号，用来对应GameplayTag
           FGameplayCueTranslatorNodeIndex NodeIndex = Link.NodeLookup[TranslationIndex];
           if (NodeIndex.IsValid())
           {
              if (TranslationLUT.IsValidIndex(NodeIndex) == false)
              {
-                UE_LOG(LogGameplayCueTranslator, Error, TEXT("FGameplayCueTranslationManager::TranslateTag_Internal %s invalid index %d was returned from NodeLookup. NodeLookup.Num=%d. Tag %s"), *GetNameSafe(Link.RulesCDO), NodeIndex.Index, TranslationLUT.Num(), *TagName.ToString());
+                // 错误处理
                 continue;
              }
 
-             // Warn if more links?
+             // 获取TranslatorNode
              FGameplayCueTranslatorNode& InnerNode = TranslationLUT[NodeIndex];
 
-             UE_LOG(LogGameplayCueTranslator, Verbose, TEXT("Translating %s --> %s (via %s)"), *TagName.ToString(), *InnerNode.CachedGameplayTagName.ToString(), *GetNameSafe(Link.RulesCDO));
+             // 获取对应GameplayCueTag
 
              OutTag = InnerNode.CachedGameplayTag;
              
+             // 尝试递归转换
              TranslateTag_Internal(InnerNode, OutTag, InnerNode.CachedGameplayTagName, TargetActor, Parameters);
-             return true;
+             
+              // 成功用一个Translator转换后就返回，不尝试其他Translator
+              return true;
           }
        }
     }
@@ -423,3 +434,10 @@ bool FGameplayCueTranslationManager::TranslateTag_Internal(FGameplayCueTranslato
     return false;
 }
 ```
+
+# 总结
+
+这里基本梳理完了整个**GameplayCueTranslator**的使用逻辑和整体设计。
+
+就算不是使用**UE**的相关功能，这个转换的结构预生成和设计也具备相当的使用价值。可以在其他方面运用。
+
