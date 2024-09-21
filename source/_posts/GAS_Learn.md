@@ -740,47 +740,78 @@ namespace EGameplayCueEvent
 
 而结合上一步的触发分析，可以确认，只有**CurrentValue**类型**GE**会由**GE**辅助**Cue**的生命周期管理。对于**BaseValue**类型的瞬时效果，都需要**Cue**自行管理。
 
-## GameplayCue的类多态特性
+这部分的调用来自于技术宅阿棍儿
 
-通过的**GameplayTag**施加的**GC**并非指定不变的。当普通攻击到人身上会出现血，但是到树上自然不应该出现血，需要有一个机制来进行转换。
+### 各类GE-CUE事件调用链
 
-完全可以指定一个**GameplayTag**，但是对于某些特定的Actor来说，实际使用的**GC**却对应的另外的**GameplayTag**。这种**GameplayTag**之间的转化和Actor的对应关系就存在 **GameplayCueTranslationManager** 中。
+- **持续GE的施加**
 
 ```c++
-// GameplayCueTranslator.cpp:509，调用发生点在 GameplayCueManager.cpp:154 GameplayCueManager::TranslateGameplayCue 中
-bool FGameplayCueTranslationManager::TranslateTag_Internal(FGameplayCueTranslatorNode& Node, FGameplayTag& OutTag, const FName& TagName, AActor* TargetActor, const FGameplayCueParameters& Parameters)
-{
-    //Node应该是一个保存了GameplayTag的转换关系和判定条件的类型
-	for (FGameplayCueTranslationLink& Link : Node.Links)
-	{
-		// Node需要本身实现如何根据Actor转换出GameplayTag的转换的TranslationIndex
-		int32 TranslationIndex = Link.RulesCDO->GameplayCueToTranslationIndex(TagName, TargetActor, Parameters);
-		if (TranslationIndex != INDEX_NONE)
-		{
-			// 根据TranslationIndex，从Node存储的属性中再次获取到一个NodeIndex
-			FGameplayCueTranslatorNodeIndex NodeIndex = Link.NodeLookup[TranslationIndex];
-			if (NodeIndex.IsValid())
-			{
-				
-				// 根据NodeIndex, 从整个FGameplayCueTranslationManager中找到一个对应的InnerNode
-				FGameplayCueTranslatorNode& InnerNode = TranslationLUT[NodeIndex];
-				// 根据InnerNode获取到一个gameplayTag
-				OutTag = InnerNode.CachedGameplayTag;
-				// 对这个GameplayTag递归尝试转换
-				TranslateTag_Internal(InnerNode, OutTag, InnerNode.CachedGameplayTagName, TargetActor, Parameters);
-				return true;
-			}
-		}
-	}
-
-	return false;
-}
+UAbilitySystemComponent::ApplyGameplayEffectSpecToSelf(...)
+  //施加持续GE
+->InvokeGameplayCueEvent(...) // OnActive和WhileActive
+  ->UGameplayCueManager::HandleGameplayCues(...)
+    ->UGameplayCueManager::HandleGameplayCue(...)
+      ->UGameplayCueManager::RouteGameplayCue(...)
+        ->UGameplayCueSet::HandleGameplayCue(...) // 必经之路
+          ->UGameplayCueSet::HandleGameplayCueNotify_Internal(...)
+            ->AGameplayCueNotify_Actor/UGameplayCueNotify_Static
+              ::OnActive/WhileActive(...)
 ```
 
-- `GameplayCueToTranslationIndex`在源代码中给出了一个示例。用于以不同Actor类型来确认对应Index。示例不具备可用性，需要完成实际继承正确实现。
-- 这个代码会递归调用，也就是说这个可以发生多次转换以找到最终应该出现的**GameplayTag**
-- 最初的`Node` 来源于 **FGameplayCueTranslationManager**储存的一个TMap规定了一个**GameplayTag**到Node的最初节点
-- 这个功能看起来并没有完全处理好，并不像是即开即用的样子
+- **持续GE的移除**
+
+```c++
+FActiveGameplayEffectsContainer::InternalRemoveActiveGameplayEffect(...)
+    ->InternalOnActiveGameplayEffectRemoved(...)
+      ->RemoveActiveGameplayEffectGrantedTagsAndModifiers(...)
+        ->UAbilitySystemComponent::InvokeGameplayCueEvent(...)
+          // 同上
+            ->AGameplayCueNotify_Actor/UGameplayCueNotify_Static::OnRemove(...)
+```
+
+- **持续GE的标签变化**
+
+```c++
+FActiveGameplayEffectsContainer::OnOwnerTagChange(...)
+->FActiveGameplayEffect::CheckOngoingTagRequirements(bInvokeGameplayCueEvents = true)
+  // 如果OngoingTagRequirements满足
+  ->FActiveGameplayEffectsContainer::AddActiveGameplayEffectGrantedTagsAndModifiers(...)
+    ->UAbilitySystemComponent::InvokeGameplayCueEvent(...)  // OnActive和WhileActive
+      // 与前文重复，略
+  // 如果OngoingTagRequirements【不】满足
+  ->FActiveGameplayEffectsContainer::RemoveActiveGameplayEffectGrantedTagsAndModifiers(...)
+    ->UAbilitySystemComponent::InvokeGameplayCueEvent(...)  //Removed
+      // 与前文重复，略
+```
+
+- **Instant GE的施加**
+
+```c++
+UAbilitySystemComponent::ApplyGameplayEffectSpecToSelf(...)
+->ExecuteGameplayEffect(...)
+ ->FActiveGameplayEffectsContainer::ExecuteActiveEffectsFrom(...)
+  ->UGameplayCueManager::InvokeGameplayCueExecuted_FromSpec(...)
+   ->AddPendingCueExecuteInternal(...)
+    ->FlushPendingCues()
+     ->IAbilitySystemReplicationProxyInterface::Call_InvokeGameplayCueExecuted_FromSpec(...)
+      ->UAbilitySystemComponent::NetMulticast_InvokeGameplayCueExecuted_FromSpec(...)
+       ->NetMulticast_InvokeGameplayCueExecuted_FromSpec_Implementation(...)
+        ->InvokeGameplayCueEvent(...) //Executed     
+         // 与前文类似，略       
+```
+
+该整理来源于知乎：[技术宅阿棍儿](https://zhuanlan.zhihu.com/p/430239761)
+
+## GameplayCue的类多态特性
+
+这部分内容转移到[GameplayCueTranslator](https://obsidian-zero.github.io/2024/07/24/GameplayCueTranslatorUse/#more)这篇文章了
+
+## GameplayCueManager
+
+一个全局的GameplayCue的管理器，所有**GameplayCue**的管理功能均从这里开始
+
+通过 **AbilitySystemGlobals** 来获取全局单例
 
 ## GameplayCueManager
 
@@ -791,16 +822,10 @@ bool FGameplayCueTranslationManager::TranslateTag_Internal(FGameplayCueTranslato
 ### FGameplayCueTranslationManager
 
 - 实现上文所提到的**GameplayTag**转换都在这个Manger中完成。
-
 - Manager本身绑定在**GameplayCueManager(GCM)**中，而**GCM**本身是单例式的，可以视为它也是单例
+- 存在 **TranslationNameToIndexMap** 用于存储了的**GameplayTag**到**FGameplayCueTranslatorNode**关系。
 
-- 存在 **TranslationNameToIndexMap** 用于存储最早的**GameplayTag**到**FGameplayCueTranslatorNode**关系。
-
-  这是一个自动生成的表，在 `FGameplayCueTranslationManager::BuildTagTranslationTable_Forward_r`中，这个有空再研究。
-
-- 存在**TranslationLUT**一个TArray存储了所有的**FGameplayCueTranslatorNode**
-
-- **FGameplayCueTranslatorNode**是一个主要使用的结构体，用来存储相关性
+- 存在**TranslationLUT**一个TArray存储了所有的**FGameplayCueTranslatorNode**。**FGameplayCueTranslatorNode**是一个主要使用的结构体，用来存储GameplayCue转换逻辑的。
 
 ### UGameplayCueSet
 
@@ -808,7 +833,8 @@ bool FGameplayCueTranslationManager::TranslateTag_Internal(FGameplayCueTranslato
 - 全局唯一，保存在**RuntimeGameplayCueObjectLibrary**中
 - 引擎开始时自动生成
 - 使用**FGameplayCueNotifyData**结构体，来存储`GameplayCueTag`到 `GameplayCueNotifyObj`的之间联系
-
 ## 参考材料
 
 [【UE】记录GameplayCue执行流程](https://zhuanlan.zhihu.com/p/693591783)
+
+[虚幻插件GAS分析05 GameplayCue的使用](https://zhuanlan.zhihu.com/p/430239761)，
