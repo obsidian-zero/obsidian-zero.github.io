@@ -668,6 +668,26 @@ GAS和蒙太奇的本身的联动就是**AbilityTask_playMontageAndWait**这个*
 
 在**GAS**使用时，会调用ASC上的接口，以便在**ASC**中也维护住对于蒙太奇接口的使用情况**LocalAnimMontageInfo** 
 
+作为动作游戏常用的节点，`PlayMontageAndWait`是一个非常常用的AT。它提供了以下四种情况根据蒙太奇播放情况的回调
+
+1. OnCompleted：蒙太奇动画正常播放结束
+2. OnBlendOut: 蒙太奇动画被混出
+3. OnInterrupted：蒙太奇动画被打断
+4. OnCancelled：技能被取消，主要在播放蒙太奇失败的情况和为外部取消时调用的接口
+
+在某种程度上，我们的逻辑可以认为1和2为一类、为蒙太奇成功播放完成。3和4为一类、即蒙太奇播放过程中失败了的情况。
+
+> AnimMontageInstace本身结束会存在两种情况，完整结束end和被其他动画打断混合blendOut，这里是将blendOut根据是否interrupt来额外区分出Interrupted事件。
+>
+> 同时通过EndTask时的委托解绑来避免重复触发事件。
+
+## 参数分析
+
+- bStopWhenAbilityEnds：在**GA**结束销毁**AT**时，同步停止蒙太奇。注意在**GA**被取消时会直接停止蒙太奇。
+- bAllowInterruptAfterBlendOut：在正常情况下，蒙太奇被BlendOut后，该AT会不再处理该蒙太奇的interrupt事件，该参数允许在blendOut后处理interrupt事件。
+
+> ASC会保存一个通过技能使用的蒙太奇信息在 LocalAnimMontageInfo 中。在该AT使用的蒙太奇blendOut就会清空掉对应蒙太奇
+
 # 参考材料
 
 [UE4/UE5 动画蒙太奇Animation Montage 源码解析](https://zhuanlan.zhihu.com/p/664971350)

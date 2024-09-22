@@ -7,8 +7,10 @@ tag:
 - program
 - ue
 date: 2024-06-17 00:00:00
-updated: 2024-07-23 20:00:00
+updated: 2024-09-20 00:00:00
+
 ---
+
 # 前言
 
 这是个人在GAS学习过程中的笔记，主要为本人学习GAS时，产生的疑惑和查证过程。这份笔记没有经过系统性的整理，对于不同层次的问题也没做区分，涉及到的内容也并不全面。
@@ -111,6 +113,93 @@ CommitAbility实际上做的就这些。所以在实际中感觉可以省略一�
 ### 结束回调
 
 **GA**结束时，会存在两个技能回调 **OnGameplayAbilityEnded** 和 **OnGameplayAbilityEndedWithData** 在这个过程中，**GA**的**bIsActive**仍然处于true的状态。但是对于不实例化**GA**会有一个 **bIsAbilityEnding**字段用来确认**GA**处于一个结束情况，
+
+## Tags
+
+这里记录一下**GameplayAbility**一些**Tag**的配置项使用说明
+
+- **取消能力标签 (CancelAbilitiesWithTag)**: 当此能力执行时，具有这些标签的其他能力将被取消。
+
+- **阻止能力标签 (BlockAbilitiesWithTag)**: 当此能力处于激活状态时，具有这些标签的其他能力将被阻止。
+
+- **激活拥有者标签 (ActivationOwnedTags)**: 当此能力激活时，会将这些标签应用于激活的拥有者。
+
+  > 如果在 **AbilitySystemGlobals** 中启用了 **ReplicateActivationOwnedTags**，这些标签将被同步。这主要描述一个和网络同步相关的内容，目前不重要
+
+- **激活所需标签 (ActivationRequiredTags)**: 只有在激活的角色/组件具有所有这些标签时，此能力才能被激活。
+
+- **激活阻止标签 (ActivationBlockedTags)**: 只要激活的角色/组件具有任何这些标签，此能力将被阻止激活。
+
+- **来源所需标签 (SourceRequiredTags)**: 只有在来源角色/组件具有所有这些标签时，此能力才能被激活。
+
+- **来源阻止标签 (SourceBlockedTags)**: 只要来源角色/组件具有任何这些标签，此能力将被阻止激活。
+
+- **目标所需标签 (TargetRequiredTags)**: 只有在目标角色/组件具有所有这些标签时，此能力才能被激活。
+
+- **目标阻止标签 (TargetBlockedTags)**: 只要目标角色/组件具有任何这些标签，此能力将被阻止激活。
+
+# AbilityTask
+
+AbilityTask主要是一个用于管理能力使用过程的异步逻辑。主要是将瞬时执行的过程将其异步化。
+
+## AbilityTask_PlayMontageAndWait
+
+作为动作游戏常用的节点，`PlayMontageAndWait`是一个非常常用的AT。它提供了以下四种情况根据蒙太奇播放情况的回调
+
+1. OnCompleted：蒙太奇动画正常播放结束
+2. OnBlendOut: 蒙太奇动画被混出
+3. OnInterrupted：蒙太奇动画被打断
+4. OnCancelled：技能被取消，主要在播放蒙太奇失败的情况和为外部取消时调用的接口
+
+在某种程度上，我们的逻辑可以认为1和2为一类、为蒙太奇成功播放完成。3和4为一类、即蒙太奇播放过程中失败了的情况。
+
+> AnimMontageInstace本身结束会存在两种情况，完整结束end和被其他动画打断混合blendOut，这里是将blendOut根据是否interrupt来额外区分出Interrupted事件。
+>
+> 同时通过EndTask时的委托解绑来避免重复触发事件。
+
+### 参数分析
+
+- bStopWhenAbilityEnds：在**GA**结束销毁**AT**时，同步停止蒙太奇。注意在**GA**被取消时会直接停止蒙太奇。
+- bAllowInterruptAfterBlendOut：在正常情况下，蒙太奇被BlendOut后，该AT会不再处理该蒙太奇的interrupt事件，该参数允许在blendOut后处理interrupt事件。
+
+> ASC会保存一个通过技能使用的蒙太奇信息在 LocalAnimMontageInfo 中。在该AT使用的蒙太奇blendOut就会清空掉对应蒙太奇
+
+## AbilityTask_WaitTargetData和TargetActor
+
+- 通过 `UAbilityTask_WaitTargetData` 创建一个`AGameplayAbilityTargetActor`，并且等待相应事件。
+
+- 通过`AGameplayAbilityTargetActor`封装碰撞、检测、指示显示等功能。回传锁定目标以选择对象。
+- `UAbilityTask_WaitTargetData`会将它创建的 `AGameplayAbilityTargetActor` 全部挂接到 **ASC** 上。
+- **TargetActor**主要通过重载 `AGameplayAbilityTargetActor::StartTargeting`和 `AGameplayAbilityTargetActor::ConfirmTargetingAndContinue`用于实现在创建和确认时进行内容的功能
+- 在通过**TargetDataReadyDelegate**接受到，除非自行设置了 **EGameplayTargetingConfirmation：CustomMulti**
+
+这两者基本是绑定的使用关系
+
+### Confirm/Cancel 确认/取消寻找目标
+
+**TargetActor**实际上有两个节点。
+
+1. 开始确认，调用 `TargetActor:ConfirmTargeting`。主要会调用到 `AGameplayAbilityTargetActor:ConfirmTargetingAndContinue` 进行瞬间的筛选。然后会自行销毁掉。
+2. 抛出有价值数据。调用**TargetDataReadyDelegate**委托，一般会在**ConfirmTargetingAndContinue**中抛出，但是也可以通过Tick等其他方式在满足条件后抛出。
+
+**UAbilityTask_WaitTargetData** 存在以下几种确认机制，用枚举 **EGameplayTargetingConfirmation** 区分
+
+- **Instant**：TargetActor生成立刻检测。检测完立即自动销毁。
+- **UserConfirmed**：等待一个输入开始最终确认，这个选择会触发 **BindToConfirmCancelInputs** 。个人觉得意义不大
+- **Custom**:  没有绑定也没有特殊处理。基本上来说反而是实质上最多的场景，等待其他方式触发（如**ASC **的 **TargetConfirm**） 或者自行决定触发
+- **CustomMulti**: 用于在**TargetActor** 的 **TargetDataReadyDelegate** 触发后，概念上可以多次触发，所以不会**EndTask**。
+
+#### AGameplayAbilityTargetActor::BindToConfirmCancelInputs
+
+里面封装了一些基于**InputID**的确认和取消触发，但是在**EnhencedInput**的大背景下，个人认为使用价值不大。
+
+#### UAbilitySystemComponent::TargetConfirm
+
+ASC中，存在 `UAbilitySystemComponent::TargetConfirm` 和 `UAbilitySystemComponent::TargetCancel`，用于对身上的所有`TargetActor:ConfirmTargeting` 统一触发。
+
+### 多次确认
+
+综上所述，如果希望一个TargetActor能够多次触发Task的话。**AT**需要定义为 **CustomMulti**类型以避免触发后结束。**TargetActor**中不进行确认，而是通过Tick等方式多次抛出有效数据储备完成的 **TargetDataReadyDelegate** 委托。最后再通过其他方式**EndTask**并且销毁**TargetActor**。应该是属于一个比较进阶的功能设计
 
 # AttributeSet
 
@@ -544,52 +633,17 @@ GA发动时是否要检测 CoolDownGE和 CostGE，全局设置，猜测为Debug�
 
 提供了部分
 
-# AbilityTask
 
-## WaitTargetData和TargetActor
 
-- 通过 `UAbilityTask_WaitTargetData` 创建一个`AGameplayAbilityTargetActor`，并且等待相应事件。
 
-- 通过`AGameplayAbilityTargetActor`封装碰撞、检测、指示显示等功能。回传锁定目标以选择对象。
-- `UAbilityTask_WaitTargetData`会将它创建的 `AGameplayAbilityTargetActor` 全部挂接到 **ASC** 上。
-- **TargetActor**主要通过重载 `AGameplayAbilityTargetActor::StartTargeting`和 `AGameplayAbilityTargetActor::ConfirmTargetingAndContinue`用于实现在创建和确认时进行内容的功能
-- 在通过**TargetDataReadyDelegate**接受到，除非自行设置了 **EGameplayTargetingConfirmation：CustomMulti**
-
-这两者基本是绑定的使用关系
-
-### Confirm/Cancel 确认/取消寻找目标
-
-**TargetActor**实际上有两个节点。
-
-1. 开始确认，调用 `TargetActor:ConfirmTargeting`。主要会调用到 `AGameplayAbilityTargetActor:ConfirmTargetingAndContinue` 进行瞬间的筛选。然后会自行销毁掉。
-2. 抛出有价值数据。调用**TargetDataReadyDelegate**委托，一般会在**ConfirmTargetingAndContinue**中抛出，但是也可以通过Tick等其他方式在满足条件后抛出。
-
-**UAbilityTask_WaitTargetData** 存在以下几种确认机制，用枚举 **EGameplayTargetingConfirmation** 区分
-
-- **Instant**：TargetActor生成立刻检测。检测完立即自动销毁。
-- **UserConfirmed**：等待一个输入开始最终确认，这个选择会触发 **BindToConfirmCancelInputs** 。个人觉得意义不大
-- **Custom**:  没有绑定也没有特殊处理。基本上来说反而是实质上最多的场景，等待其他方式触发（如**ASC **的 **TargetConfirm**） 或者自行决定触发
-- **CustomMulti**: 用于在**TargetActor** 的 **TargetDataReadyDelegate** 触发后，概念上可以多次触发，所以不会**EndTask**。
-
-#### AGameplayAbilityTargetActor::BindToConfirmCancelInputs
-
-里面封装了一些基于**InputID**的确认和取消触发，但是在**EnhencedInput**的大背景下，个人认为使用价值不大。
-
-#### UAbilitySystemComponent::TargetConfirm
-
-ASC中，存在 `UAbilitySystemComponent::TargetConfirm` 和 `UAbilitySystemComponent::TargetCancel`，用于对身上的所有`TargetActor:ConfirmTargeting` 统一触发。
-
-### 多次确认
-
-综上所述，如果希望一个TargetActor能够多次触发Task的话。**AT**需要定义为 **CustomMulti**类型以避免触发后结束。**TargetActor**中不进行确认，而是通过Tick等方式多次抛出有效数据储备完成的 **TargetDataReadyDelegate** 委托。最后再通过其他方式**EndTask**并且销毁**TargetActor**。应该是属于一个比较进阶的功能设计
 
 # GameplayCue
 
-GameplayCue(**GC**)是用于作为和逻辑无关的纯视效表现，例如特效，音效，镜头效果等功能。
+GameplayCue(**GCue**)是用于作为和逻辑无关的纯视效表现，例如特效，音效，镜头效果等功能。
 
 ## InvokeGameplayCueEvent
 
-Gameplay一个很特异的点在于，在使用时并不是指定一个具体的**GC**类。而是通过**GameplayTag**来间接使用。
+Gameplay一个很特异的点在于，在使用时并不是指定一个具体的**GCue**类。而是通过**GameplayTag**来间接使用。
 
 ### UGameplayCueManager::HandleGameplayCue
 
@@ -640,6 +694,7 @@ bool UGameplayCueSet::HandleGameplayCueNotify_Internal(AActor* TargetActor, int3
 		{
 			if (NonInstancedCue->HandlesEvent(EventType))
 			{
+                //处理GameplayCueEvent事件
 				NonInstancedCue->HandleGameplayCue(TargetActor, EventType, Parameters);
 				bReturnVal = true;
                 // 未确认重载时调用父Tag层级处理
@@ -673,6 +728,7 @@ bool UGameplayCueSet::HandleGameplayCueNotify_Internal(AActor* TargetActor, int3
 					//确认TargetActor上是否有Cue的实例了，没有会在调用创建一个
 					AGameplayCueNotify_Actor* SpawnedInstancedCue = CueManager->GetInstancedCueActor(TargetActor, InstancedClass, Parameters);
 					
+                    //处理GameplayCueEvent事件
                     SpawnedInstancedCue->HandleGameplayCue(TargetActor, EventType, Parameters);
                     bReturnVal = true;
                     
@@ -813,12 +869,6 @@ UAbilitySystemComponent::ApplyGameplayEffectSpecToSelf(...)
 
 通过 **AbilitySystemGlobals** 来获取全局单例
 
-## GameplayCueManager
-
-一个全局的GameplayCue的管理器，所有**GameplayCue**的管理功能均从这里开始
-
-通过 **AbilitySystemGlobals** 来获取全局单例
-
 ### FGameplayCueTranslationManager
 
 - 实现上文所提到的**GameplayTag**转换都在这个Manger中完成。
@@ -833,6 +883,7 @@ UAbilitySystemComponent::ApplyGameplayEffectSpecToSelf(...)
 - 全局唯一，保存在**RuntimeGameplayCueObjectLibrary**中
 - 引擎开始时自动生成
 - 使用**FGameplayCueNotifyData**结构体，来存储`GameplayCueTag`到 `GameplayCueNotifyObj`的之间联系
+
 ## 参考材料
 
 [【UE】记录GameplayCue执行流程](https://zhuanlan.zhihu.com/p/693591783)
