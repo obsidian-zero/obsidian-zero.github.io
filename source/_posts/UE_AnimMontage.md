@@ -471,6 +471,33 @@ bool IsStopped() const { return Blend.GetDesiredValue() == 0.f; }
 
 结束即是在蒙太奇更新的步进**Advanced**阶段中。如果已经停止状态且混出完成后，直接**Terminate**并发送**Endded**的事件。
 
+## 蒙太奇的获取动画Slot
+
+其实就是播放时，获取到每个蒙太奇，并根据slot查询获得对应的动画资源，代码如下：
+
+```c++
+// AnimInstanceProxy.cpp:1873
+for (const FMontageEvaluationState& EvalState : GetMontageEvaluationData())
+	{
+		// 遍历所有蒙太奇数据
+
+		const UAnimMontage* const Montage = EvalState.Montage.Get();
+		if (Montage->IsValidSlot(SlotNodeName))
+		{
+            //根据slotName来查找动画资源
+			FAnimTrack const* const AnimTrack = Montage->GetAnimationData(SlotNodeName);
+
+			//...一些动画资源的事情，略过
+
+			// 获取到动画数据
+			FAnimExtractContext ExtractionContext(static_cast<double>(EvalState.MontagePosition), Montage->HasRootMotion() && RootMotionMode != ERootMotionMode::NoRootMotionExtraction, EvalState.DeltaTimeRecord);
+
+			FAnimationPoseData NewAnimationPoseData(NewPose);
+			AnimTrack->GetAnimationPose(NewAnimationPoseData, ExtractionContext);
+```
+
+
+
 # 动画通知
 
 动画通知有如下两个分类方式，共四种组合
