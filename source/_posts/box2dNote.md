@@ -1,7 +1,7 @@
 ---
 title: 碰撞和Box2D的一些笔记
 categories: 
-- gameplay
+- Gameplay
 tag:
 - program
 - gameplay
