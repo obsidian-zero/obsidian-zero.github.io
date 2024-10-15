@@ -29,6 +29,8 @@ updated: 2024-09-20 00:00:00
 
 2. **InstancedPerActor**：表示技能会被实例化，并且每个角色（Actor）都会拥有自己的技能实例。每个角色都可以独立使用和管理自己的技能。
 
+   > 这种技能需要做打开retrigger配置才能在已经激活的情况下再次尝试激活，再次激活需要注意技能的相关清理逻辑。在重新激活前，会调用EndAbility来结束本次技能的释放流程
+
 3. **InstancedPerExecution**：表示技能会被根据每次执行实例化，即每次执行技能都会创建一个新的实例。这样可以确保每次执行技能时都有独立的实例。
 
 ### UGameplayAbility::IsActive
@@ -113,6 +115,50 @@ CommitAbility实际上做的就这些。所以在实际中感觉可以省略一�
 ### 结束回调
 
 **GA**结束时，会存在两个技能回调 **OnGameplayAbilityEnded** 和 **OnGameplayAbilityEndedWithData** 在这个过程中，**GA**的**bIsActive**仍然处于true的状态。但是对于不实例化**GA**会有一个 **bIsAbilityEnding**字段用来确认**GA**处于一个结束情况，
+
+## Ability激活
+
+技能的激活往往是出于 `UAbilitySystemComponent::TryActivateAbility` 这个函数，从客户端激活技能主要包含以下步骤。
+
+1. 通过判断技能的Handle判断是否处于一个正在移除或者移除中状态
+
+2. 判断技能、Actor信息是否可用
+
+3. 判断网络权限是否正确
+
+   - 网络权限为模拟 **ROLE_SimulatedProxy** 归属权在其他客户端的一律不能执行
+   - 此时不为本地，但允许在本地执行 **LocalOnly** 的或者 **LocalPredicted** 的向客户端通知激活能力
+   - 当前不是服务器 **ROLE_Authority**，但是能力能在服务器执行 **ServerOnly** 或者在客户端同步执行 **ServerOnly** 的，尝试向服务器请求激活能力
+   - 都不满足的情况下直接尝试直接激活技能 **InternalTryActivateAbility**
+
+4. 上述的几种一旦成功都会调用到 `UAbilitySystemComponent::InternalServerTryActivateAbility` 这个入口函数中，此时最终激活方已经确定了，开始正式激活
+
+   > 4 这一步和前面3步可能完全不是同一个机子上执行了
+
+5. 重新检测涉及到的Handle、Spec、Ability的可用性
+
+6. 锁定能力列表，避免激活流程中能力列表发生变化
+
+7. 检测Actor的可用性
+
+8. 重新判断网络权限，即3对于远程调用的在这一步验证是否正确
+
+9. 检测技能是否满足激活条件，即 **CanActivateAbility**，包括ASC上的可用性检测，冷却、消耗、Tag满足、以及蓝图重载的判断方法情况
+
+10. 如果当前是权威 **ROLE_Authority**且权限为服务器激活的，则创建或复用一个服务器激活预测键。如果是本地执行的，不创建预测键。
+
+    - 但是都创建一个预测窗口，并通知客户端已经成功激活了
+    - 根据实例化策略激活能力
+
+11. 如果是本地预测的话，则生成预测窗口、并且绑定预测键的捕获委托，根据实例化策略激活能力 
+
+    > 10 和 11这里已经调用到了ActivateAbility这样的实际激活入口了。
+    >
+    > 在实际激活前，会存在一个preActivate阶段，这个阶段先赋予角色一层OwnerTag，然后将要取消的能力取消、并且可以阻止掉组织能力标签的后续GA触发了。
+    >
+    > 然后才是技能的正式激活Activate
+
+12. 记录技能激活的一些后续情况，例如技能Spec已经产生变化，还有记录技能最新的激活时间
 
 ## Tags
 
@@ -299,6 +345,17 @@ const UAttributeSet* UAbilitySystemComponent::GetAttributeSubobject(const TSubcl
 
 - Infinite: 长期存在，对于Attribute的修改一般为CurrentValue，在存在Period时会变成每次的独立BaseValue修改
 - Has duration： 长期存在，可以视为带时间限制的Infinite
+
+## GE通过Modify来修改属性
+
+GE可以有多个Modify来修改属性，使用的Modify有如下四种：
+
+- **Add**：在Attribute上直接加上计算结果
+- **Multiply**：在Attribute上乘以计算结果
+- **Divide**：在Attribute上除以计算结果
+- **Override**：使用结果直接覆盖
+
+处于Modify外，修改的另一种方式是使用**EEC**来讲属性变化分配，例如将伤害总量分配到生命和护盾上。
 
 ## Modify和Executions
 
