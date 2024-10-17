@@ -7,7 +7,7 @@ tag:
 - program
 - ue
 date: 2024-06-17 00:00:00
-updated: 2024-09-20 00:00:00
+updated: 2024-10-20 00:00:00
 
 ---
 
@@ -127,9 +127,9 @@ CommitAbility实际上做的就这些。所以在实际中感觉可以省略一�
 3. 判断网络权限是否正确
 
    - 网络权限为模拟 **ROLE_SimulatedProxy** 归属权在其他客户端的一律不能执行
-   - 此时不为本地，但允许在本地执行 **LocalOnly** 的或者 **LocalPredicted** 的向客户端通知激活能力
-   - 当前不是服务器 **ROLE_Authority**，但是能力能在服务器执行 **ServerOnly** 或者在客户端同步执行 **ServerOnly** 的，尝试向服务器请求激活能力
-   - 都不满足的情况下直接尝试直接激活技能 **InternalTryActivateAbility**
+   - 此时不为本地控制**LocalControllered**(基本为服务器上看客户端主控的情况)，但能力要在客户端本地执行 **LocalOnly** 的或者本地预测 **LocalPredicted** 的GA、会向客户端发起**RPC**、让客户端激活能力，
+   - 当前不是服务器 **ROLE_Authority**，但是能力要在在服务器执行 **ServerOnly** 或者在客户端同步执行 **ServerInitiated** 的，尝试向服务器请求激活能力
+   - 都不是的情况下就直接尝试直接激活技能 **InternalTryActivateAbility**
 
 4. 上述的几种一旦成功都会调用到 `UAbilitySystemComponent::InternalServerTryActivateAbility` 这个入口函数中，此时最终激活方已经确定了，开始正式激活
 
