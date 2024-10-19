@@ -5,6 +5,7 @@ categories:
 tag:
 - program
 - ui
+- blog
 hidden: true
 date: 2024-10-08 00:00:00
 updated: 2024-10-08 20:00:00
