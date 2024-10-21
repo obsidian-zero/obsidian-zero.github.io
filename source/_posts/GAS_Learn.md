@@ -160,6 +160,21 @@ CommitAbility实际上做的就这些。所以在实际中感觉可以省略一�
 
 12. 记录技能激活的一些后续情况，例如技能Spec已经产生变化，还有记录技能最新的激活时间
 
+## Ability预测
+
+### 客户端
+
+1. 客户端激活**GA**时，生成一个**Prediction Key**
+2. **PredictionKey**有效时，所有由客户端添加的**GE**都带有这个**PredictionKey**
+3. **PredictionKey**过期后，需要一个新的**PredictionKey**为后续的逻辑后使用
+
+### 服务器
+
+1. 服务器接受到**PredictionKey**
+2. 服务器接受到**PredictionKey**后，造成的**GE**也带有相同的**Key**
+3. 服务器上添加的**GE**在复制到客户端时，如果存在使用相同的**Key**的相同**GE**，说明这个GE是匹配的，此时存在两个相同的Key
+4. **Key**标记为陈旧的（Slate），如果确定
+
 ## Tags
 
 这里记录一下**GameplayAbility**一些**Tag**的配置项使用说明
@@ -972,6 +987,14 @@ UAbilitySystemComponent::ApplyGameplayEffectSpecToSelf(...)
 - 全局唯一，保存在**RuntimeGameplayCueObjectLibrary**中
 - 引擎开始时自动生成
 - 使用**FGameplayCueNotifyData**结构体，来存储`GameplayCueTag`到 `GameplayCueNotifyObj`的之间联系
+
+## 减少GCue使用
+
+由于GameplayCue是使用多播RPC处理的，因此GAS限制了每次网络更新中仅会有两个相同的**GameplayCue RPC**，所以部分情况下，可以通过 `GameplayCueLocal` 来使用一些只在本地的GameplayCue。
+
+只在本地的**GameplayCue**也只能在本地被移除掉。
+
+ 
 
 ## 参考材料
 
