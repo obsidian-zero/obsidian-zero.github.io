@@ -38,6 +38,15 @@ jobs:
       - name: Clean Hexo cache and old files
         run: npx hexo clean
 
+      - name: Save Hexo Config
+        run: npx hexo config > hexo_resolved_config.txt
+
+      - name: Upload Hexo Config Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: hexo-config
+          path: hexo_resolved_config.txt
+          
       # Step 6: 生成静态文件
       - name: Build Hexo
         run: npx hexo generate --debug
