@@ -20,6 +20,9 @@ jobs:
         with:
           node-version: '18'
 
+      - name: Verify theme config 1
+        run: cat node_modules/hexo-theme-next/_config.yml
+
       - name: Cache NPM dependencies
         uses: actions/cache@v4
         with:
@@ -31,7 +34,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Verify theme config
+      - name: Verify theme config 2
         run: cat node_modules/hexo-theme-next/_config.yml
 
       - name: Clean Hexo cache and old files
