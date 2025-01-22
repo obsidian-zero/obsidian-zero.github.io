@@ -1,7 +1,7 @@
 ---
 title: UE摄像机基础
 categories: 
-- gameplay
+- Gameplay
 tag:
 - program
 - gameplay

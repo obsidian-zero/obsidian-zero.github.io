@@ -1,7 +1,7 @@
 ---
 title: UE5实验性功能-GameplayCameraSystem分析
 categories: 
-- gameplay
+- Gameplay
 tag:
 - program
 - gameplay
