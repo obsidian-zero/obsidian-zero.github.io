@@ -1,22 +1,27 @@
-name: Pages
+name: Deploy Hexo to GitHub Pages
 
 on:
   push:
     branches:
-      - main  # default branch
+      - main  # 监控主分支上的更改
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # Step 1: 检出仓库代码
+      - name: Checkout code
+        uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          submodules: recursive
-      - name: Use Node.js 20.x
+          submodules: recursive  # 确保子模块（如主题）正确拉取
+
+      # Step 2: 设置 Node.js 环境
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '18'  # 使用稳定的 Node.js 18.x 版本
+
+      # Step 3: 缓存 npm 依赖
       - name: Cache NPM dependencies
         uses: actions/cache@v4
         with:
@@ -24,27 +29,34 @@ jobs:
           key: ${{ runner.OS }}-npm-cache
           restore-keys: |
             ${{ runner.OS }}-npm-cache
-      - name: Install Dependencies
-        run: npm install
-      - name: Ensure Hexo has execute permissions
-        run: chmod +x node_modules/.bin/hexo  # 确保 Hexo 可以执行
-      - name: Build
-        run: npm run build
+
+      # Step 4: 安装依赖
+      - name: Install dependencies
+        run: npm ci  # 确保依赖安装一致
+
+      # Step 5: 清理旧的生成文件
+      - name: Clean Hexo cache and old files
+        run: npx hexo clean
+
+      # Step 6: 生成静态文件
+      - name: Build Hexo
+        run: npx hexo generate --debug
+
+      # Step 7: 上传静态文件为 GitHub Pages 工件
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./public
+          path: ./public  # 确保正确指定生成文件的路径
 
   deploy:
     needs: build
     permissions:
-      pages: write
+      pages: write  # 允许写入 GitHub Pages
       id-token: write
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
+      # Step 8: 部署到 GitHub Pages
       - name: Deploy to GitHub Pages
-        id: deployment
         uses: actions/deploy-pages@v4
