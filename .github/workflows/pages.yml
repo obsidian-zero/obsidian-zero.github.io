@@ -3,25 +3,23 @@ name: Deploy Hexo to GitHub Pages
 on:
   push:
     branches:
-      - main  # 监控主分支上的更改
+      - main
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      # Step 1: 检出仓库代码
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          submodules: recursive  # 确保子模块（如主题）正确拉取
+          submodules: true
+          fetch-depth: 0
 
-      # Step 2: 设置 Node.js 环境
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'  # 使用稳定的 Node.js 18.x 版本
+          node-version: '18'
 
-      # Step 3: 缓存 npm 依赖
       - name: Cache NPM dependencies
         uses: actions/cache@v4
         with:
@@ -30,37 +28,35 @@ jobs:
           restore-keys: |
             ${{ runner.OS }}-npm-cache
 
-      # Step 4: 安装依赖
       - name: Install dependencies
-        run: npm ci  # 确保依赖安装一致
+        run: npm ci
 
-      # Step 5: 清理旧的生成文件
+      - name: Override theme config
+        run: |
+          cp ./_config.yml node_modules/hexo-theme-next/_config.yml
+
+      - name: Verify theme config
+        run: cat node_modules/hexo-theme-next/_config.yml
+
       - name: Clean Hexo cache and old files
         run: npx hexo clean
 
-      - name: Show Theme Config
-        run: cat node_modules/hexo-theme-next/_config.yml
-
-          
-      # Step 6: 生成静态文件
       - name: Build Hexo
         run: npx hexo generate --debug
 
-      # Step 7: 上传静态文件为 GitHub Pages 工件
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./public  # 确保正确指定生成文件的路径
+          path: ./public
 
   deploy:
     needs: build
     permissions:
-      pages: write  # 允许写入 GitHub Pages
+      pages: write
       id-token: write
     environment:
       name: github-pages
     runs-on: ubuntu-latest
     steps:
-      # Step 8: 部署到 GitHub Pages
       - name: Deploy to GitHub Pages
         uses: actions/deploy-pages@v4
