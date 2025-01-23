@@ -1,0 +1,60 @@
+<mxfile host="app.diagrams.net" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36" version="24.7.16">
+  <diagram name="第 1 页" id="_3kLo8Ewsnefiv-UZd9Y">
+    <mxGraphModel dx="657" dy="663" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="xueZKRcYkd8QptZ4YBR6-4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" edge="1" parent="1" source="xueZKRcYkd8QptZ4YBR6-1" target="xueZKRcYkd8QptZ4YBR6-2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="xueZKRcYkd8QptZ4YBR6-1" value="IA触发" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="270" y="150" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="xueZKRcYkd8QptZ4YBR6-6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fillColor=#fff2cc;strokeColor=#000000;" edge="1" parent="1" source="xueZKRcYkd8QptZ4YBR6-2" target="xueZKRcYkd8QptZ4YBR6-5">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="210" y="320" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="xueZKRcYkd8QptZ4YBR6-7" value="是" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="xueZKRcYkd8QptZ4YBR6-6">
+          <mxGeometry x="-0.0286" y="-1" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="xueZKRcYkd8QptZ4YBR6-9" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" edge="1" parent="1" source="xueZKRcYkd8QptZ4YBR6-2" target="xueZKRcYkd8QptZ4YBR6-8">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="450" y="320" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="xueZKRcYkd8QptZ4YBR6-10" value="否" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="xueZKRcYkd8QptZ4YBR6-9">
+          <mxGeometry x="-0.4301" y="1" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="xueZKRcYkd8QptZ4YBR6-2" value="角色是否在技能动作中？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="195" y="240" width="270" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="xueZKRcYkd8QptZ4YBR6-12" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" edge="1" parent="1" source="xueZKRcYkd8QptZ4YBR6-5" target="xueZKRcYkd8QptZ4YBR6-11">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="xueZKRcYkd8QptZ4YBR6-5" value="&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;连击触发&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;判断此时是否有对应输入的连击触发技能可触发，将其触发" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="150" y="390" width="120" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="xueZKRcYkd8QptZ4YBR6-13" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" edge="1" parent="1" source="xueZKRcYkd8QptZ4YBR6-8">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="330" y="570" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="xueZKRcYkd8QptZ4YBR6-8" value="基础触发&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;找到是否有对应输入的基础触发，直接触发&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="390" y="390" width="120" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="xueZKRcYkd8QptZ4YBR6-11" value="始终触发&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;如果有对应的始终触发技能&lt;/div&gt;&lt;div&gt;始终尝试将其触发&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="270" y="570" width="120" height="100" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
