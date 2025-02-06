@@ -8,12 +8,12 @@ tag:
 - gameplay
 - 3C
 date: 2025-1-23 00:00:00
-updated: 2025-1-23 00:00:00
+updated: 2025-2-6 00:00:00
 ---
 
 # 前言
 
-《流星蝴蝶剑.net》和《拳皇13》是念念不忘的游戏。从年少开始，十余年过去了，我依然忘不了手指飞舞、在键盘上跃动的那种体验。
+《流星蝴蝶剑.net》和《拳皇13》是我印象深刻的游戏，搓招输入的那种独特手感让我一直念念不忘。
 
 在我的个人DEMO中，我尝试复刻了一些搓招体验，在此整理一下我相关系统的开发设计。我在增强输入和GAS的基础上完成了搓招系统、预输入系统等功能。
 
@@ -331,7 +331,7 @@ bool ADemoPlayerGASCharacterBase::onAddActionGameplayAbility(TSubclassOf<UAction
 
 ![image-20250119113252479](./UE_ComboInputPlus/image-20250119113252479.png)
 
-首先需要区分是否在技能蒙太奇中，由于动作游戏本身一个技能就是一段PlayMontageAndWait，这个可以直接通过**GA**的**ActivationOwnedTags**赋予一个Tag来作区分。
+首先需要区分是否在技能蒙太奇中，由于动作游戏本身一个技能就是一段PlayMontageAndWait，这个可以直接通过**GA**的**ActivationOwnedTags**赋予一个Tag来作区分。如果后面需要有更精确的需求的话，也可以自行拓展
 
 ![image-20250119113707907](./UE_ComboInputPlus/image-20250119113707907.png)
 
@@ -510,17 +510,121 @@ void ADemoPlayerGASCharacterBase::UseActionGameplayAbility(const FInputActionIns
 
 # 深入ComboTrigger, 优化搓招的识别和手感优化
 
-在实际使用中，一个基础问题逐渐显现：
+## 搓招的基本实现
 
-某些情况下，技能可能因多次前序输入而未能正确触发。例如，`→→+拳` 的技能在输入 `→→→→ + 拳` 时有时无法正确触发、被吞键了
+首先在搓招输入的实现中，一般存在两种思路。
 
-这是由于 UE 中 ComboTrigger 的默认设计存在局限性。为了解决此问题，需要对 ComboTrigger 源码进行研究，拓展响应的功能。
+- **累计触发**：当一个符合需求的按键输入触发时，填充当前的阶段，随后等待下一个按键触发下一个阶段，直到超时重置。
+- **前向检索**：维护一段时间内输入队列，当最后一个按键输入触发时，检测输入队列是否满足一个完整的触发队列。
+
+以一个↓→+A的输入举例，两种实现方式的区别是
+
+![image-20250206215920138](./UE_ComboInputPlus/输入方式的两种实现.png)
+
+在UE中，EnhancedInput的ComboTrigger便是采用的累计触发式的设计思路。
 
 ## ComboTrigger触发源码
 
+在实际使用中，一个操作上的问题逐渐显现：技能可能因多次前序输入而未能正确触发。例如，`→→+拳` 的技能在输入 `→→→→ + 拳` 时就会有可能无法正确触发，感觉上就是被吞键了。
+
+这是由于 UE 中 ComboTrigger 的默认设计存在一定的问题。为了解决此问题，需要对 ComboTrigger 源码进行改造，拓展响应的功能。
+
+这里是ComboTrigger的主要顺序和源码：
+
+![image-20250206224929327](./UE_ComboInputPlus/image-20250206224929327.png)
+
+~~~c++
+//InputTrigger.cpp:236
+ETriggerState UInputTriggerCombo::UpdateState_Implementation(const UEnhancedPlayerInput* PlayerInput, FInputActionValue ModifiedValue, float DeltaTime)
+{
+    
+    // 获取当前的 ComboStepAction
+    if (const UInputAction* CurrentAction = ComboActions[CurrentComboStepIndex].ComboStepAction)
+    {
+        // 遍历所有取消动作，检查它们是否已经触发，如果触发则重置
+        // ...
+
+        // 遍历所有输入动作，检查是否有错误顺序的触发动作
+        for (FInputComboStepData ComboStep : ComboActions)
+        {
+            // 出现错误顺序的输入时，将重置进度
+            if (ComboStep.ComboStepAction && ComboStep.ComboStepAction != CurrentAction)
+            {
+                const FInputActionInstance* CancelState = PlayerInput->FindActionInstanceData(ComboStep.ComboStepAction);
+		
+				if (CancelState)
+                {
+					CurrentComboStepIndex = 0;
+					CurrentAction = ComboActions[CurrentComboStepIndex].ComboStepAction;	// 重置输入进度
+					break;
+				}
+                
+            }
+        }
+
+        // 如果一个输入后没有下一个正确输入的时间过长，则重置进度
+        if (CurrentComboStepIndex > 0)
+        {
+            CurrentTimeBetweenComboSteps += DeltaTime;
+            if (CurrentTimeBetweenComboSteps >= ComboActions[CurrentComboStepIndex].TimeToPressKey)
+            {
+                CurrentComboStepIndex = 0;
+                CurrentAction = ComboActions[CurrentComboStepIndex].ComboStepAction; // 重置触发进度
+            }
+        }
+
+        // 判断当前等待的IA是否触发
+        const FInputActionInstance* CurrentState = PlayerInput->FindActionInstanceData(CurrentAction);
+        // 如果当前等待的IA触发，则推进到下一个阶段
+        if (CurrentState && (ComboActions[CurrentComboStepIndex].ComboStepCompletionStates & static_cast<uint8>(CurrentState->GetTriggerEvent())))
+        {
+            CurrentComboStepIndex++;
+            CurrentTimeBetweenComboSteps = 0;
+            // 检查是否已完成组合中的所有动作
+            if (CurrentComboStepIndex >= ComboActions.Num())
+            {
+                CurrentComboStepIndex = 0;
+                return ETriggerState::Triggered; // 直接触发
+            }
+        }
+
+        // 如果这个ComboTrigger还存在检测队列，则返回Ongoing状态
+        if (CurrentComboStepIndex > 0)
+        {
+            return ETriggerState::Ongoing;
+        }
+
+        // ...
+    }
+    return ETriggerState::None;
+}
+```
+~~~
+
+我们可以对照代码发现一个问题，在`→→+拳` 的技能输入在输入 `→→→→ + 拳`操作时，就有可能因为前两个输入触发等待时间过长，导致超时重置了。
 
 
-# 精准触发，多个技能一致时的触发结果
+
+![image-20250206223315071](./UE_ComboInputPlus/超时重置.png)
+
+这个问题尤其容易玩家紧张的多次输入重复输入后出现，一旦发生，玩家往往会觉得明明输入指令完全正确却没有反应，这对操作体验的影响非常大。
+
+进一步分析代码，我们还可以发现 ComboTrigger 存在一些潜在问题，可能导致不符合需求的情况有如下：
+
+- **超时重置**：超时重置机制可能导致输入序列无法响应最新的正确输入。这正是上面所述的问题。
+- **乱序重置**：对于乱序输入，系统会直接重置。而为了保障玩家的操作手感，可以考虑不进行重置。
+- **单键超时**：目前的机制只对单个输入设定超时时限，而没有为整个输入序列设置一个超时限制。实际上，可以考虑为整个序列增加一个全局超时阈值，从而确保玩家能够顺畅输入。
+
+## 自定义 ComboTrigger
+
+因此，我们需要对 ComboTrigger 进行一些改进。基于个人的开发习惯，首先引入了整套输入序列的超时时限。在改进过程中，我发现了超时重置的问题，所以代码中同时解决了这两个问题。
+
+- **全局超时**：实现全局超时非常简单，只需要额外维护一个全局的时间信息即可。
+- **超时重置**：仔细分析后发现，超时重置的主要问题出现在连续输入序列。如果输入不是从头开始，或者输入并不完全连续，重复的输入可能被认为无效，但这是正常现象。因此可以对超时重置机制进行优化，使其更加符合实际需求。
+
+因此更改ComboTrigger的主要处理流程以实现优化需求
+
+# 精准触发，多个输入序列一致时如何正确的触发
 
 在搓招输入系统中，不可避免地会遇到一个问题：
 
