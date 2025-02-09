@@ -8,7 +8,7 @@ tag:
 - gameplay
 - 3C
 date: 2025-1-23 00:00:00
-updated: 2025-2-6 00:00:00
+updated: 2025-2-9 00:00:00
 ---
 
 # 前言
@@ -190,7 +190,7 @@ void ADemoPlayerGASCharacterBase::UseActionGameplayAbility(const FInputActionIns
 
 在完成基础的技能之后，需要考虑一些更为复杂的内容，比如说连招机制的实现，这会是一个横跨了输入、技能和动画三个体系的内容。
 
-![The King of Fighters XIII 2025-01-18 21-01-40.mp4 [video-to-gif output image]](./UE_ComboInputPlus/ezgif-3-2b7b90518d.gif)
+![The King of Fighters XIII](./UE_ComboInputPlus/ezgif-3-2b7b90518d.gif)
 
 在像《拳皇》这类格斗游戏中，涉及到如下的操作和逻辑，例如草薙京的荒咬→九伤→七濑的派生连招。这些操作涉及到以下几个问题：
 
@@ -525,13 +525,13 @@ void ADemoPlayerGASCharacterBase::UseActionGameplayAbility(const FInputActionIns
 
 ## ComboTrigger触发源码
 
-在实际使用中，一个操作上的问题逐渐显现：技能可能因多次前序输入而未能正确触发。例如，`→→+拳` 的技能在输入 `→→→→ + 拳` 时就会有可能无法正确触发，感觉上就是被吞键了。
+在实际使用中，一个操作上的问题逐渐显现：技能可能因多次前序输入而未能正确触发。例如，`→→→+拳` 的技能在输入 `→→→→ + 拳` 时就会有可能无法正确触发，感觉上就是被吞键了。
 
 这是由于 UE 中 ComboTrigger 的默认设计存在一定的问题。为了解决此问题，需要对 ComboTrigger 源码进行改造，拓展响应的功能。
 
 这里是ComboTrigger的主要顺序和源码：
 
-![image-20250206224929327](./UE_ComboInputPlus/image-20250206224929327.png)
+![image-20250206224929327](./UE_ComboInputPlus/image-20250207232145835.png)
 
 ~~~c++
 //InputTrigger.cpp:236
@@ -601,28 +601,86 @@ ETriggerState UInputTriggerCombo::UpdateState_Implementation(const UEnhancedPlay
 ```
 ~~~
 
-我们可以对照代码发现一个问题，在`→→+拳` 的技能输入在输入 `→→→→ + 拳`操作时，就有可能因为前两个输入触发等待时间过长，导致超时重置了。
+我们可以对照代码发现一个问题，在`→→→+拳` 的技能输入在输入 `→→→→ + 拳`操作时，就有可能因为重复的输入导致被认为乱序，从而重置输入。
 
 
 
-![image-20250206223315071](./UE_ComboInputPlus/超时重置.png)
+![image-20250206223315071](./UE_ComboInputPlus/乱序重置.png)
 
 这个问题尤其容易玩家紧张的多次输入重复输入后出现，一旦发生，玩家往往会觉得明明输入指令完全正确却没有反应，这对操作体验的影响非常大。
 
-进一步分析代码，我们还可以发现 ComboTrigger 存在一些潜在问题，可能导致不符合需求的情况有如下：
+进一步分析代码，我们还可以发现 ComboTrigger 存在一些潜在问题，目前对此可以改进的几点：
 
-- **超时重置**：超时重置机制可能导致输入序列无法响应最新的正确输入。这正是上面所述的问题。
-- **乱序重置**：对于乱序输入，系统会直接重置。而为了保障玩家的操作手感，可以考虑不进行重置。
+- **重复输入重置**：对于重复输入会造成乱序，系统会直接重置。而为了保障玩家的操作手感，可以考虑不进行重置。
 - **单键超时**：目前的机制只对单个输入设定超时时限，而没有为整个输入序列设置一个超时限制。实际上，可以考虑为整个序列增加一个全局超时阈值，从而确保玩家能够顺畅输入。
+- **乱序重置**：从个人角度来看还是觉得乱序重置是一个很容易被误操作导致影响手感的点。
 
-## 自定义 ComboTrigger
+## 自定义 ComboTrigger，优化输入判断流程
 
-因此，我们需要对 ComboTrigger 进行一些改进。基于个人的开发习惯，首先引入了整套输入序列的超时时限。在改进过程中，我发现了超时重置的问题，所以代码中同时解决了这两个问题。
+因此，我们需要对 ComboTrigger 进行一些改进。在个人的开发需求，首先引入了整套输入序列的超时时限。
+
+在后续调整手感的过程中，我发现了重复重置的问题，所以代码中要同时解决了这两个问题。
 
 - **全局超时**：实现全局超时非常简单，只需要额外维护一个全局的时间信息即可。
-- **超时重置**：仔细分析后发现，超时重置的主要问题出现在连续输入序列。如果输入不是从头开始，或者输入并不完全连续，重复的输入可能被认为无效，但这是正常现象。因此可以对超时重置机制进行优化，使其更加符合实际需求。
+- **乱序重置**：仔细分析后发现，乱序重置的主要问题出现在连续输入的序列。如果输入不是从头开始，或者输入并不完全连续，重复的输入可能被认为无效，但这是正常现象。因此可以对超时重置机制进行优化，使其更加符合实际需求。
 
-因此更改ComboTrigger的主要处理流程以实现优化需求
+因此更改ComboTrigger的主要处理流程以实现优化需求，改进后的流程和代码如下：
+
+![image-20250209214422985](./UE_ComboInputPlus/image-20250209214422985.png)
+
+```c++
+// SameBeginIANum:从开始时有多少个相同的一样IA，如→→→+拳
+// CurrentTimeIncomboTotal:整个输入的整体时间
+// TimeForComboSteps:每个输入的重复
+int32 beginIndex = 0; //判断乱序时，默认从0开始
+
+if(CurrentComboStepIndex == SameBeginIANum) //说明现在开始重复已经输入完了，在等待第一个不同的输入
+{
+    const FInputActionInstance* BeginAction = PlayerInput->FindActionInstanceData(BeginInputAction);
+    if (BeginAction && (ComboActions[0].ComboStepCompletionStates & static_cast<uint8>(BeginAction->GetTriggerEvent())))
+    {
+        //如果是开始重复的IA被重复输入了，那么相当于整个输入序列后延一位，调整整体时间和乱序检查的开始位置
+        beginIndex = SameBeginIANum; 
+        CurrentTimeBetweenComboSteps = 0;
+        CurrentTimeIncomboTotal -= TimeForComboSteps[0];
+        for(int32 i = 0; i < SameBeginIANum - 1; i++)
+        {
+            TimeForComboSteps[i] = TimeForComboSteps[i + 1];
+        }
+    }
+}
+
+for (int32 i = beginIndex; i < ComboActions.Num(); i++)
+{
+    const FInputComboStepData& ComboStep = ComboActions[i];
+    // ... 乱序检查部分，和原本一直不用管
+}
+
+// 超时检查需要额外加入检查整体超时
+if (CurrentComboStepIndex > 0)
+{
+    CurrentTimeBetweenComboSteps += DeltaTime;
+    CurrentTimeIncomboTotal += DeltaTime;
+    if (CurrentTimeBetweenComboSteps >= ComboActions[CurrentComboStepIndex].TimeToPressKey || CurrentTimeIncomboTotal >= TotalTimeForUse)
+    {
+        CurrentComboStepIndex = 0;
+        CurrentTimeIncomboTotal = 0;
+        CurrentAction = ComboActions[CurrentComboStepIndex].ComboStepAction;		
+    }
+}
+
+const FInputActionInstance* CurrentState = PlayerInput->FindActionInstanceData(CurrentAction);
+if (CurrentState && (ComboActions[CurrentComboStepIndex].ComboStepCompletionStates & static_cast<uint8>(CurrentState->GetTriggerEvent())))
+{
+    // 当Combo输入推进时，记下每一个输入中间的间隔时间
+    TimeForComboSteps[CurrentComboStepIndex - 1] = CurrentTimeBetweenComboSteps;
+
+    // ... 后续内容无变化
+}
+
+```
+
+
 
 # 精准触发，多个输入序列一致时如何正确的触发
 
