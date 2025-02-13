@@ -624,6 +624,8 @@ ETriggerState UInputTriggerCombo::UpdateState_Implementation(const UEnhancedPlay
 - **全局超时**：实现全局超时非常简单，只需要额外维护一个全局的时间信息即可。
 - **乱序重置**：仔细分析后发现，乱序重置的主要问题出现在连续输入的序列。如果输入不是从头开始，或者输入并不完全连续，重复的输入可能被认为无效，但这是正常现象。因此可以对超时重置机制进行优化，使其更加符合实际需求。
 
+
+
 因此更改ComboTrigger的主要处理流程以实现优化需求，改进后的流程和代码如下：
 
 ![image-20250209214422985](./UE_ComboInputPlus/image-20250209214422985.png)
@@ -680,7 +682,9 @@ if (CurrentState && (ComboActions[CurrentComboStepIndex].ComboStepCompletionStat
 
 ```
 
+前置重复不触发乱序的效果：
 
+![image-20250209215551772](./UE_ComboInputPlus/image-20250209215551772.png)
 
 # 精准触发，多个输入序列一致时如何正确的触发
 
