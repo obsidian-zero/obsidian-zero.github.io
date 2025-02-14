@@ -27,7 +27,7 @@ updated: 2025-2-9 00:00:00
 
 如 →↓↘+拳（623P）升龙拳、↓↑↑A阎罗等。
 
-在UE的增强输入系统中，它提供了一个基本的搓招功能实现——组合触发器，如下图：
+在UE的增强输入系统中，它提供了一个基本的搓招功能实现——组合触发器**ComboTrigger**，如下图：
 
 ![image-20250118203519155](./UE_ComboInputPlus/image-20250118203519155.png)
 
@@ -686,7 +686,7 @@ if (CurrentState && (ComboActions[CurrentComboStepIndex].ComboStepCompletionStat
 
 ![image-20250209215551772](./UE_ComboInputPlus/image-20250209215551772.png)
 
-# 精准触发，多个输入序列一致时如何正确的触发
+# 多个输入序列一致时如何正确的触发
 
 在搓招输入系统中，不可避免地会遇到一个问题：
 
@@ -698,19 +698,343 @@ if (CurrentState && (ComboActions[CurrentComboStepIndex].ComboStepCompletionStat
 
 例如，在八神庵的出招表中，`↓→ + 拳` 同时存在多个技能（暗拂、八稚女、暗削、焰鸥）的输入序列中。
 
-如何避免输入相似时触发错误技能，是需要进一步解决的核心问题。
+如何避免输入相似时触发错误技能，是需要进一步解决的核心问题，我们需要深入解读EnhancedInput的相关源码，理解清楚其本身的触发机制后我们才能完善这些内容。
+
+## UE相关源码
+
+EnhancedInput中需要关注的代码在 `UEnhancedPlayerInput::EvaluateInputDelegates` 这个函数中，重点代码如下：
+
+```c++
+// EnhancedPlayerInput.cpp:330
+
+void UEnhancedPlayerInput::EvaluateInputDelegates(const TArray<UInputComponent*>& InputComponentStack, const float DeltaTime, const bool bGamePaused, const TArray<TPair<FKey, FKeyState*>>& KeysWithEvents)
+{
+    // 1. 重置信息并计算时间相关信息，不重要
+    ActionsWithEventsThisTick.Reset();
+    const UWorld* World = GetWorld();
+    float CurrentTime = World ? World->GetRealTimeSeconds() : LastFrameTime + (1.0f / 60.0f);
+    RealTimeDeltaSeconds = CurrentTime - LastFrameTime;
+    const float Dilation = GetEffectiveTimeDilation();
+    const float NonDilatedDeltaTime = Dilation != 0.0f ? DeltaTime / Dilation : RealTimeDeltaSeconds;
+
+    // 2. 遍历所有IA，根据设备上的操作信息，比如按下或者松开，处理IMC中的IA的触发器和修改器等信息
+    for (FEnhancedActionKeyMapping& Mapping : EnhancedActionMappings)
+    {
+        if (!Mapping.Action)
+        {
+            continue;
+        }
+
+        FKeyState* KeyState = GetKeyState(Mapping.Key);
+        FVector RawKeyValue = KeyState ? KeyState->RawValue : FVector::ZeroVector;
+
+        bool bDownLastTick = KeyDownPrevious.FindRef(Mapping.Key);
+        bool bKeyIsDown = KeyState && (KeyState->bDown || KeyState->EventCounts[IE_Pressed].Num() || KeyState->EventCounts[IE_Repeat].Num());
+        bKeyIsDown |= Mapping.Key.IsAnalog() && RawKeyValue.SizeSquared() > 0;
+
+        bool bKeyIsReleased = !bKeyIsDown && bDownLastTick;
+        bool bKeyIsHeld = bKeyIsDown && bDownLastTick;
+
+        EKeyEvent KeyEvent = bKeyIsHeld ? EKeyEvent::Held : ((bKeyIsDown || bKeyIsReleased) ? EKeyEvent::Actuated : EKeyEvent::None);
+
+        ProcessActionMappingEvent(Mapping.Action, NonDilatedDeltaTime, bGamePaused, RawKeyValue, KeyEvent, Mapping.Modifiers, Mapping.Triggers);
+    }
+
+    // 3. 处理注入的输入，主要是调试时使用模拟IA的状态情况，不重要，略过
+   	// ……
+
+    // 4. 遍历所有的IA，处理IA本身的触发器和修改器的信息
+    for (TPair<TObjectPtr<const UInputAction>, FInputActionInstance>& ActionPair : ActionInstanceData)
+    {
+        TObjectPtr<const UInputAction> Action = ActionPair.Key;
+        FInputActionInstance& ActionData = ActionPair.Value;
+        ETriggerState TriggerState = ETriggerState::None;
+
+        if (ActionsWithEventsThisTick.Contains(Action))
+        {
+            FInputActionValue RawValue = ActionData.Value;
+            ActionData.Value = ApplyModifiers(ActionData.Modifiers, ActionData.Value, NonDilatedDeltaTime);
+
+            ETriggerState PrevState = ActionData.TriggerStateTracker.GetState();
+            TriggerState = ActionData.TriggerStateTracker.EvaluateTriggers(this, ActionData.Triggers, ActionData.Value, NonDilatedDeltaTime);
+            TriggerState = ActionData.TriggerStateTracker.GetMappingTriggerApplied() ? FMath::Min(TriggerState, PrevState) : TriggerState;
+
+            if (bGamePaused && !Action->bTriggerWhenPaused)
+            {
+                TriggerState = ETriggerState::None;
+            }
+        }
+
+        ActionData.TriggerEventInternal = GetTriggerStateChangeEvent(ActionData.LastTriggerState, TriggerState);
+        ActionData.TriggerEvent = ConvertInternalTriggerEvent(ActionData.TriggerEventInternal);
+        ActionData.LastTriggerState = TriggerState;
+        ActionData.ElapsedProcessedTime += TriggerState != ETriggerState::None ? NonDilatedDeltaTime : 0.f;
+        ActionData.ElapsedTriggeredTime += (ActionData.TriggerEvent == ETriggerEvent::Triggered) ? NonDilatedDeltaTime : 0.f;
+        if (TriggerState == ETriggerState::Triggered)
+        {
+            ActionData.LastTriggeredWorldTime = CurrentTime;
+        }
+    }
+
+    // 5. 遍历所有绑定的委托
+    const bool bAlt = IsAltPressed(), bCtrl = IsCtrlPressed(), bShift = IsShiftPressed(), bCmd = IsCmdPressed();
+    int32 StackIndex = InputComponentStack.Num() - 1;
+    for (; StackIndex >= 0; --StackIndex)
+    {
+        UEnhancedInputComponent* IC = Cast<UEnhancedInputComponent>(InputComponentStack[StackIndex]);
+
+        // 搜集所有需要触发的被绑定的委托
+        static TArray<TUniquePtr<FEnhancedInputActionEventBinding>> TriggeredDelegates;
+        // 这个委托没有做特殊处理，是按照绑定时的顺序进行委托的遍历
+        for (const TUniquePtr<FEnhancedInputActionEventBinding>& Binding : IC->GetActionEventBindings())
+        {
+            if (const FInputActionInstance* ActionData = FindActionInstanceData(Binding->GetAction()))
+            {
+                const ETriggerEvent BoundTriggerEvent = Binding->GetTriggerEvent();
+                if (ActionData->TriggerEvent == BoundTriggerEvent ||
+                    (BoundTriggerEvent == ETriggerEvent::Started && ActionData->TriggerEventInternal == ETriggerEventInternal::StartedAndTriggered))
+                {
+                    // 记录触发的委托，将标记为Started放在一开始
+                    if (BoundTriggerEvent == ETriggerEvent::Started)
+                    {
+                        TriggeredDelegates.EmplaceAt(0, Binding->Clone());
+                    }
+                    else
+                    {
+                        TriggeredDelegates.Emplace(Binding->Clone());
+                    }
+
+                    // 记录本帧触发的动作
+                    if (BoundTriggerEvent == ETriggerEvent::Triggered)
+                    {
+                        TriggeredActionsThisTick.Add(ActionData->GetSourceAction());
+                    }
+                }
+
+                // 如果委托绑定的动作需要消耗按键，则标记按键为已消耗，不重要，略过
+                // ...
+            }
+        }
+
+        // 遍历所有触发的委托，这里可以结合上面一步看出来，这是按照委托的绑定顺序，随后将Start类型的绑定顺序提前而产生的委托执行顺序
+        for (TUniquePtr<FEnhancedInputActionEventBinding>& Delegate : TriggeredDelegates)
+        {
+            TObjectPtr<const UInputAction> DelegateAction = Delegate->GetAction();
+            bool bCanTrigger = true;
+
+         	// 一些检查，不重要，略过
+
+            if (bCanTrigger)
+            {
+                if (const FInputActionInstance* ActionData = FindActionInstanceData(DelegateAction))
+                {
+                    // 执行委托
+                    Delegate->Execute(*ActionData);
+                }
+            }
+        }
+        TriggeredDelegates.Reset();
+        TriggeredActionsThisTick.Reset();
+
+        // 更新动作值绑定
+        for (const FEnhancedInputActionValueBinding& Binding : IC->GetActionValueBindings())
+        {
+            if (const UInputAction* Action = Binding.GetAction())
+            {
+                if (const FInputActionInstance* ActionData = FindActionInstanceData(Action))
+                {
+                    Binding.CurrentValue = ActionData->GetValue();
+                }
+                else
+                {
+                    Binding.CurrentValue = FInputActionValue(Action->ValueType, FVector::ZeroVector);
+                }
+            }
+        }
+	// 重置相关信息，这部分略过        
+}
+```
+
+结合代码，我们可以大体上明白，EnhancedInput的触发机制是Tick模式，每帧固定时间节点会尝试收集所有需要触发的绑定委托，并按顺序触发它们。
+
+一帧内主要按照如下顺序：
+
+1. 处理IMC中，根据每个IA配置的触发器（**InputTrigger**）和修改器 （**InputModifier**）的信息。这里还不会修改IA本身的触发状态。
+2. 处理IA本身配置的触发器和修改器，这里才会真正修改IA本身的触发状态。
+3. 根据绑定顺序，顺序触发所有绑定了IA的委托。
+
+## IA触发序列的处理
+
+![image-20250214224615692](./UE_ComboInputPlus/image-20250214224615692.png)
+
+对于一个W键和鼠标左键组合而成的IA，主要触发情况就会如上图。
+
+大体上就有两个特征：
+
+- ComboTrigger中，最后一个需要检测的IA实际触发在ComboTrigger的IA的上一帧，如鼠标左键的IA触发就是一定在以鼠标左键的上一帧
+
+  > 这个问题很好解决，专门为最后一个键单独做一个ComboTrigger的IA用来触发对应技能即可
+
+- 当同一帧满足多个IA触发时，会按照委托绑定顺序调用对应的执行函数。
+
+所以我们需要处理这两个问题，才能够实现精准的触发，我们要用技能的优先级来决定技能的触发顺序
+
+## 优先级触发的实现
+
+侵入式改动EnhancedPlayerInput肯定是不可取的，这种较为底层的东西不知道有多少地方依赖着（比如手柄的UI操作据我所知好像也有走EnhancedInput？）。所以改动上要尽可能的对其他部分无影响。
+
+这种优先级排序和触发的实现其实没有什么特殊的内容，就是缓存和排序触发即可。
+
+> 注意，在制作这方面内容时我将代码重构了一遍，和前面的实现有些不一致
+
+首先，我们需要轻微的继承一下，EnhancedPlayerInput，在每帧调用前后增加两个事件委托：
+
+```c++
+void UMeteorEnhancedPlayerInput::EvaluateInputDelegates(const TArray<UInputComponent*>& InputComponentStack, float DeltaTime, bool bGamePaused, const TArray<TPair<FKey, FKeyState*>>& KeysWithEvents)
+{
+	// Call the before delegate
+	OnBeforeEvaluateInputDelegates.Broadcast();
+
+	// Call the base class implementation
+	Super::EvaluateInputDelegates(InputComponentStack, DeltaTime, bGamePaused, KeysWithEvents);
+
+	// Call the after delegate
+	OnAfterEvaluateInputDelegates.Broadcast();
+}
+```
+
+其次，我们在处理委托调用时，不直接进行IA触发，而是将其存储到一个队列中：
+
+```c++
+void UMeteorAbilityInputComponent::TriggerInputAction(const FInputActionInstance& InputInstance)
+{
+    const UInputAction* IA = InputInstance.GetSourceAction();
+    
+    if(!TriggeredInputActions.Contains(IA))
+    {
+        TriggeredInputActions.Add(IA);
+    }
+}
+```
+
+最后，在一帧所有的委托结束之后，根据After委托的调用，排序所有技能后触发优先级最高的技能：
+
+```c++
+void UMeteorAbilityInputComponent::TriggerActionAbility()
+{
+    TArray<TObjectPtr<UActionGameplayAbility>> Abilities;
+    
+    // 先获取到所有触发的IA对应的技能
+    for(const UInputAction* IA: TriggeredInputActions)
+    {
+        TArray<TObjectPtr<UActionGameplayAbility>> TriggeredAbilities = GetActionGameplayAbility(IA);
+        for(TObjectPtr<UActionGameplayAbility> Ability: TriggeredAbilities)
+        {
+            if(!Abilities.Contains(Ability))
+            {
+                Abilities.Add(Ability);
+            }
+        }
+    }
+
+    // 根据技能配置的优先级排序
+    Abilities.StableSort([](const TObjectPtr<UActionGameplayAbility>& A, const TObjectPtr<UActionGameplayAbility>& B)
+    {
+        return A->GetInputPriority() > B->GetInputPriority();
+    });
+    
+    // 只触发第一个技能
+    if(AbilitySystemComponent.Get() && Abilities.Num() > 0)
+    {
+        AbilitySystemComponent->TryActivateAbility(ActionAbilityToSpec[Abilities[0]]);
+    }
+    TriggeredInputActions.Empty();
+}
+```
+
+这样子就可以基于技能本身的优先级配置，触发最符合需求的技能了。
 
 # 宽容时限，预输入机制
 
-精准输入往往是玩家的难点之一。在一些技能设计中，因固定时间点输入的收益更高而设置奖励机制，这是符合预期可以接受的。
+精准输入往往是玩家的难点之一。在一些游戏设计中，有些在固定时间点的输入能达成放帧等效果，具备更高的收益。
 
-然而，对于普通的连招操作，过于苛刻的输入判定可能导致断连或错误输入，从而影响游戏体验。
+这种相当于一个奖励机制，精准输入的高难度带来高回报，这是符合预期可以接受的。
 
-为此，需要引入 **预输入机制**，允许玩家在一定时间范围内提前输入，这能有效优化操作手感，提升游戏体验。
+然而，对于普通的连招操作，过于苛刻的输入判定总是容易导致断连或串招，从而影响游戏体验。
+
+为此，需要引入 **预输入机制**，允许玩家在一定时间范围内提前输入的结果有效，这能有效优化操作手感，提升游戏体验。
+
+## 预输入机制设计和实现
+
+结合了之前的实现之后，很容易得出一个预输入的机制实现。
+
+通过某些方式打开预输入的锁定开关后，不进行排序和触发，直到预输入区间结束之后时间后才可以触发。这里我还是使用**ANS**进行处理。
+
+这个实现目前来看在DEMO中没有什么问题，主要需要注意一下几个点：
+
+- 我的项目中，只需要检测IA触发即可，不需要根据IA上的值做任何判断和操作，所以直接缓存对应的IA对象即可，这不一定适用所有玩法。
+- 需要控制好触发委托的时序问题，混乱的时序总是容易出问题的。
+- 是否有可能被同时打开多个预输入区间？多个重叠时想要如何处理？
+
+所以这边新增一种ANS用来在蒙太奇中打开预输入区间:
+
+```c++
+void UInputBufferAnimNotifyState::NotifyBegin(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation, float TotalDuration, const FAnimNotifyEventReference& EventReference)
+{
+	Super::NotifyBegin(MeshComp, Animation, TotalDuration, EventReference);
+
+	AActor* OwnerActor = MeshComp->GetOwner();
+
+	TObjectPtr<UMeteorAbilityInputComponent> AbilityInputComponent = OwnerActor->FindComponentByClass<UMeteorAbilityInputComponent>();	
+
+	
+	AbilityInputComponent->StartInputBufferLock(BufferActions);
+}
+
+void UInputBufferAnimNotifyState::NotifyEnd(USkeletalMeshComponent * MeshComp, UAnimSequenceBase * Animation, const FAnimNotifyEventReference& EventReference)
+{
+	Super::NotifyEnd(MeshComp, Animation, EventReference);
+
+	AActor* OwnerActor = MeshComp->GetOwner();
+
+	TObjectPtr<UMeteorAbilityInputComponent> AbilityInputComponent = OwnerActor->FindComponentByClass<UMeteorAbilityInputComponent>();	
+
+	AbilityInputComponent->EndInputBufferLock(BufferActions);
+}
+```
+
+![image-20250214231232119](./UE_ComboInputPlus/image-20250214231232119.png)
+
+预输入区间也就是打开后，只允许某些固定的输入被存储起来:
+
+这里主要还是处理一下多个预输入区间
+
+```c++
+void UMeteorAbilityInputComponent::StartInputBufferLock(TArray<UInputAction*> InputActions)
+{
+    inputLock += 1;
+    for(UInputAction* IA: InputActions)
+    {
+        AllowBufferInputActions[IA] = AllowBufferInputActions.FindOrAdd(IA, 0) + 1;
+    }
+}
+
+void UMeteorAbilityInputComponent::EndInputBufferLock(TArray<UInputAction*> InputActions)
+{
+    inputLock -= 1;
+    for(UInputAction* IA: InputActions)
+    {
+        AllowBufferInputActions[IA] = AllowBufferInputActions.FindOrAdd(IA, 1) - 1;
+    }
+}
+```
+
+
 
 # 总结
 
-以上是个人对类格斗游戏搓招系统开发的一些研究和思考。如今，格斗类游戏逐渐式微，难以再成为主流，只有少数老牌公司还在坚持相关元素游戏。
+以上是个人对类格斗游戏搓招系统开发的一些研究和思考。
 
-想到自己的研究最终只是一个自娱自乐的结果，难以有机会去构筑起一个新项目，多少有些惆怅吧。不过世事难料，谁知道哪颗种子是否又会萌出一些什么呢？
+如今，格斗类游戏逐渐式微，难以再成为主流，只有少数老牌公司还能做的红红火火（比如街霸6），有些公司已经卖身卖出习惯了（就你SNK）或者当惯了代工厂（ARC社别跑了）。
 
+想到这点粗浅的研究最终只是一个自娱自乐的结果，难以有机会去构筑起一个新项目，还是有些惆怅的。
