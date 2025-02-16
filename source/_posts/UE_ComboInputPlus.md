@@ -816,7 +816,7 @@ void UEnhancedPlayerInput::EvaluateInputDelegates(const TArray<UInputComponent*>
             }
         }
 
-        // 遍历所有触发的委托，这里可以结合上面一步看出来，这是按照委托的绑定顺序，随后将Start类型的绑定顺序提前而产生的委托执行顺序
+        // 遍历所有触发的委托，这里可以结合上面一步看出来，这是按照委托的绑定顺序，随后将Start类型的绑定顺序提前，而产生的委托执行顺序
         for (TUniquePtr<FEnhancedInputActionEventBinding>& Delegate : TriggeredDelegates)
         {
             TObjectPtr<const UInputAction> DelegateAction = Delegate->GetAction();
@@ -836,21 +836,8 @@ void UEnhancedPlayerInput::EvaluateInputDelegates(const TArray<UInputComponent*>
         TriggeredDelegates.Reset();
         TriggeredActionsThisTick.Reset();
 
-        // 更新动作值绑定
-        for (const FEnhancedInputActionValueBinding& Binding : IC->GetActionValueBindings())
-        {
-            if (const UInputAction* Action = Binding.GetAction())
-            {
-                if (const FInputActionInstance* ActionData = FindActionInstanceData(Action))
-                {
-                    Binding.CurrentValue = ActionData->GetValue();
-                }
-                else
-                {
-                    Binding.CurrentValue = FInputActionValue(Action->ValueType, FVector::ZeroVector);
-                }
-            }
-        }
+        // 更新IA绑定中的信息，不重要，略过
+        
 	// 重置相关信息，这部分略过        
 }
 ```
@@ -887,7 +874,7 @@ void UEnhancedPlayerInput::EvaluateInputDelegates(const TArray<UInputComponent*>
 
 > 注意，在制作这方面内容时我将代码重构了一遍，和前面的实现有些不一致
 
-首先，我们需要轻微的继承一下，EnhancedPlayerInput，在每帧调用前后增加两个事件委托：
+首先，我们需要轻微的继承一下`EnhancedPlayerInput`，在每帧调用前后增加两个事件委托：
 
 ```c++
 void UMeteorEnhancedPlayerInput::EvaluateInputDelegates(const TArray<UInputComponent*>& InputComponentStack, float DeltaTime, bool bGamePaused, const TArray<TPair<FKey, FKeyState*>>& KeysWithEvents)
@@ -972,9 +959,9 @@ void UMeteorAbilityInputComponent::TriggerActionAbility()
 
 这个实现目前来看在DEMO中没有什么问题，主要需要注意一下几个点：
 
-- 我的项目中，只需要检测IA触发即可，不需要根据IA上的值做任何判断和操作，所以直接缓存对应的IA对象即可，这不一定适用所有玩法。
-- 需要控制好触发委托的时序问题，混乱的时序总是容易出问题的。
-- 是否有可能被同时打开多个预输入区间？多个重叠时想要如何处理？
+- 我的项目中，只需要检测IA触发即可，不需要根据IA上的值做任何判断和操作，所以直接缓存对应的IA对象即可。对于某些依赖输入的具体值的设计还需要更深入的思考讨论。
+- 需要控制好触发委托的时序问题，技能的触发时序、动画时序、输入时序之间的关系需要理好
+- 是否有可能被同时打开多个预输入区间？多个重叠时想要如何处理？直到所有的预输入区间
 
 所以这边新增一种ANS用来在蒙太奇中打开预输入区间:
 
@@ -1007,7 +994,7 @@ void UInputBufferAnimNotifyState::NotifyEnd(USkeletalMeshComponent * MeshComp, U
 
 预输入区间也就是打开后，只允许某些固定的输入被存储起来:
 
-这里主要还是处理一下多个预输入区间
+这里主要还是处理一下多个预输入区间后允许输入的IA缓存，这样子可以避免多个重复的预输入区间引用时出现问题。
 
 ```c++
 void UMeteorAbilityInputComponent::StartInputBufferLock(TArray<UInputAction*> InputActions)
@@ -1029,12 +1016,80 @@ void UMeteorAbilityInputComponent::EndInputBufferLock(TArray<UInputAction*> Inpu
 }
 ```
 
+随后修改一下绑定IA的触发函数，在预输入期间只处理可用的函数。
 
+```c++
+void UMeteorAbilityInputComponent::TriggerInputAction(const FInputActionInstance& InputInstance)
+{
+    const UInputAction* IA = InputInstance.GetSourceAction();
+    if(IsInputBufferLocked())
+    {
+        // If the input buffer is locked, we will only add the allowed input actions to the buffer
+        if(AllowBufferInputActions.FindOrAdd(IA, 0) == 0)
+        {
+            return;
+        }
+    }
+    
+    if(!TriggeredInputActions.Contains(IA))
+    {
+        TriggeredInputActions.Add(IA);
+    }
+}
+```
+
+最后为了避免一下容易出现的时序问题，还是将输入的触发时序约束在 **EnhancedPlayerInput** 的这个流程里，而不是AnimNotifyState的流程中。
+
+```c++
+void UMeteorAbilityInputComponent::onBeforeEvaluateInputDelegates()
+{
+    if(!IsInputBufferLocked())
+    {
+        // This is the function that will be called when the input buffer unlock
+        TriggerActionAbility(); 
+    }
+}
+
+void UMeteorAbilityInputComponent::onAfterEvaluateInputDelegates()
+{
+    if(!IsInputBufferLocked())
+    {
+        TriggerActionAbility();
+    }
+}
+```
+
+这里会在输入流程之前尝试触发一次，这是还是出于优先处理预输入的设计考虑。
+
+同一帧内如果既有预输入得到的IA和正常输入的IA，还是希望能先应用预输入的IA，而不是进行排序后选用高优先级的GA。
+
+预输入依然是需要承担风险和责任的，而不是能卡个时间点覆盖掉。
+
+![image-20250216130041601](./UE_ComboInputPlus/image-20250216130041601.png)
+
+## AnimNotifyState的考虑
+
+这里主要讨论一下为什么还是要把输入的触发时序放在**EnhancedPlayerInput**这个流程中。
+
+如果稍微研究过一下AnimNotifyState相关的内容的话，就可以知道某一帧中动画通知（Queue模式）触发的顺序是这样的：
+
+- AN触发
+- ANS End事件
+- ANS Start事件
+- ANS Tick事件
+
+同时，动画系统每一帧会根据之前的时间流逝推动蒙太奇进度，但是这个时间又有可能被卡顿、跳转等其他因素影响，导致触发不是很精确。
+
+最简单想象的一个情况是，同一帧内先触发**预输入ANS**的End事件，再触发**连招ANS**的Start事件。
+
+如果把预输入触发的情况放在**预输入ANS**的End事件调用的接口中，就会导致此时不能根据**连招ANS**进行准确地触发。
+
+其次，ANS分成**Queue**事件和**BranchPoint**事件，正常来说是不希望在**Queue**中产生影响蒙太奇播放的逻辑的，但是本身动作GA又严重依赖蒙太奇，而把所有ANS都改成**BranchPoint**也会产生无意义的性能消耗，所以还是进行缓存到输入流程重处罚。
+
+> 其实应该还会和其他模块的Tick产生问题，这里就不必展开了。
 
 # 总结
 
 以上是个人对类格斗游戏搓招系统开发的一些研究和思考。
 
-如今，格斗类游戏逐渐式微，难以再成为主流，只有少数老牌公司还能做的红红火火（比如街霸6），有些公司已经卖身卖出习惯了（就你SNK）或者当惯了代工厂（ARC社别跑了）。
-
-想到这点粗浅的研究最终只是一个自娱自乐的结果，难以有机会去构筑起一个新项目，还是有些惆怅的。
+这如今，格斗类游戏逐渐式微，难以再成为主流，只有少数老牌公司还能做的红红火火（比如街霸6），有些公司已经卖身卖出习惯了（就你SNK）或者当惯了代工厂（ARC社），不知道有没有自己做这种游戏的那一天。

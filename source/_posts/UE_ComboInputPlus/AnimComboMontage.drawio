@@ -1,9 +1,15 @@
-<mxfile host="app.diagrams.net" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36" version="26.0.11">
+<mxfile host="app.diagrams.net" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36" version="26.0.13">
   <diagram name="第 1 页" id="j3MGJoSn1ZyXknKf6WYY">
-    <mxGraphModel dx="1500" dy="718" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+    <mxGraphModel dx="1645" dy="718" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
+        <mxCell id="-yUFTyaOagfAc9hKJpYV-11" value="" style="endArrow=none;dashed=1;html=1;dashPattern=1 3;strokeWidth=2;rounded=0;" edge="1" parent="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="1450" y="1050" as="sourcePoint" />
+            <mxPoint x="1450" y="790" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
         <mxCell id="CsHPOPzfWVjGtbRFUnVf-1" value="" style="endArrow=classic;html=1;rounded=0;" parent="1" edge="1">
           <mxGeometry width="50" height="50" relative="1" as="geometry">
             <mxPoint x="90" y="400" as="sourcePoint" />
@@ -412,65 +418,110 @@
         <mxCell id="7yn3Zlz3aUI9qg9WpPa_-54" value="乱序重置" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
           <mxGeometry x="135" y="1350" width="60" height="30" as="geometry" />
         </mxCell>
-        <mxCell id="h0tccU7lTHysjUieuKmg-9" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" edge="1" parent="1" source="h0tccU7lTHysjUieuKmg-1" target="h0tccU7lTHysjUieuKmg-2">
+        <mxCell id="h0tccU7lTHysjUieuKmg-9" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" source="h0tccU7lTHysjUieuKmg-1" target="h0tccU7lTHysjUieuKmg-2" edge="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="h0tccU7lTHysjUieuKmg-1" value="IMC上IA的配置应用&lt;div&gt;进行检测&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+        <mxCell id="h0tccU7lTHysjUieuKmg-1" value="IMC上IA的配置应用&lt;div&gt;进行检测&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
           <mxGeometry x="-640" y="1980" width="120" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="h0tccU7lTHysjUieuKmg-10" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="h0tccU7lTHysjUieuKmg-2" target="h0tccU7lTHysjUieuKmg-3">
+        <mxCell id="h0tccU7lTHysjUieuKmg-10" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="h0tccU7lTHysjUieuKmg-2" target="h0tccU7lTHysjUieuKmg-3" edge="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="h0tccU7lTHysjUieuKmg-2" value="IA本身的配置应用&lt;div&gt;修改IA状态&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+        <mxCell id="h0tccU7lTHysjUieuKmg-2" value="IA本身的配置应用&lt;div&gt;修改IA状态&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" parent="1" vertex="1">
           <mxGeometry x="-640" y="2090" width="120" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="h0tccU7lTHysjUieuKmg-3" value="触发委托" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+        <mxCell id="h0tccU7lTHysjUieuKmg-3" value="触发委托" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="1" vertex="1">
           <mxGeometry x="-640" y="2200" width="120" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="h0tccU7lTHysjUieuKmg-4" value="第 i 帧" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+        <mxCell id="h0tccU7lTHysjUieuKmg-4" value="第 i 帧" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
           <mxGeometry x="-630" y="1920" width="100" height="40" as="geometry" />
         </mxCell>
-        <mxCell id="h0tccU7lTHysjUieuKmg-11" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" edge="1" parent="1" source="h0tccU7lTHysjUieuKmg-5" target="h0tccU7lTHysjUieuKmg-6">
+        <mxCell id="h0tccU7lTHysjUieuKmg-11" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" source="h0tccU7lTHysjUieuKmg-5" target="h0tccU7lTHysjUieuKmg-6" edge="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="h0tccU7lTHysjUieuKmg-5" value="IMC上IA配置应用&lt;div&gt;进行检测&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+        <mxCell id="h0tccU7lTHysjUieuKmg-5" value="IMC上IA配置应用&lt;div&gt;进行检测&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
           <mxGeometry x="-380" y="1980" width="120" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="h0tccU7lTHysjUieuKmg-12" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="h0tccU7lTHysjUieuKmg-6" target="h0tccU7lTHysjUieuKmg-7">
+        <mxCell id="h0tccU7lTHysjUieuKmg-12" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="h0tccU7lTHysjUieuKmg-6" target="h0tccU7lTHysjUieuKmg-7" edge="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="h0tccU7lTHysjUieuKmg-6" value="IA本身的配置应用&lt;div&gt;修改IA状态&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+        <mxCell id="h0tccU7lTHysjUieuKmg-6" value="IA本身的配置应用&lt;div&gt;修改IA状态&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" parent="1" vertex="1">
           <mxGeometry x="-380" y="2090" width="120" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="h0tccU7lTHysjUieuKmg-7" value="触发委托" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+        <mxCell id="h0tccU7lTHysjUieuKmg-7" value="触发委托" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="1" vertex="1">
           <mxGeometry x="-380" y="2200" width="120" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="h0tccU7lTHysjUieuKmg-8" value="第 i+1 帧" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+        <mxCell id="h0tccU7lTHysjUieuKmg-8" value="第 i+1 帧" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
           <mxGeometry x="-370" y="1920" width="100" height="40" as="geometry" />
         </mxCell>
-        <mxCell id="h0tccU7lTHysjUieuKmg-13" value="IA_LC&lt;div&gt;绑定委托被调用&lt;/div&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+        <mxCell id="h0tccU7lTHysjUieuKmg-13" value="IA_LC&lt;div&gt;绑定委托被调用&lt;/div&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
           <mxGeometry x="-740" y="2220" width="90" height="30" as="geometry" />
         </mxCell>
-        <mxCell id="h0tccU7lTHysjUieuKmg-14" value="IA_W + IA_LC（已触发状态被检测）&lt;div&gt;&lt;span style=&quot;text-align: left;&quot;&gt;IA_W_LC的&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&amp;nbsp;ComboTrigger触发&lt;/div&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+        <mxCell id="h0tccU7lTHysjUieuKmg-14" value="IA_W + IA_LC（已触发状态被检测）&lt;div&gt;&lt;span style=&quot;text-align: left;&quot;&gt;IA_W_LC的&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&amp;nbsp;ComboTrigger触发&lt;/div&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
           <mxGeometry x="-500" y="1995" width="110" height="30" as="geometry" />
         </mxCell>
-        <mxCell id="h0tccU7lTHysjUieuKmg-16" value="IA_LC&lt;div&gt;已触发&lt;/div&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+        <mxCell id="h0tccU7lTHysjUieuKmg-16" value="IA_LC&lt;div&gt;已触发&lt;/div&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
           <mxGeometry x="-725" y="2105" width="60" height="30" as="geometry" />
         </mxCell>
-        <mxCell id="h0tccU7lTHysjUieuKmg-17" value="&lt;span style=&quot;text-align: left;&quot;&gt;IA_W_LC&lt;/span&gt;&lt;br&gt;&lt;div&gt;已触发&lt;/div&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+        <mxCell id="h0tccU7lTHysjUieuKmg-17" value="&lt;span style=&quot;text-align: left;&quot;&gt;IA_W_LC&lt;/span&gt;&lt;br&gt;&lt;div&gt;已触发&lt;/div&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
           <mxGeometry x="-500" y="2105" width="110" height="30" as="geometry" />
         </mxCell>
-        <mxCell id="h0tccU7lTHysjUieuKmg-18" value="&lt;span style=&quot;text-align: left;&quot;&gt;IA_W_LC&lt;/span&gt;&lt;br&gt;&lt;div&gt;绑定委托被调用&lt;/div&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+        <mxCell id="h0tccU7lTHysjUieuKmg-18" value="&lt;span style=&quot;text-align: left;&quot;&gt;IA_W_LC&lt;/span&gt;&lt;br&gt;&lt;div&gt;绑定委托被调用&lt;/div&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
           <mxGeometry x="-500" y="2215" width="110" height="30" as="geometry" />
         </mxCell>
-        <mxCell id="h0tccU7lTHysjUieuKmg-19" value="IA_LC：鼠标左键点击对应的IA&lt;div&gt;IA_W：W键点击对应的IA&lt;/div&gt;&lt;div&gt;IA_W_LC：前两个IA通过组合触发器触发的新IA&lt;/div&gt;" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+        <mxCell id="h0tccU7lTHysjUieuKmg-19" value="IA_LC：鼠标左键点击对应的IA&lt;div&gt;IA_W：W键点击对应的IA&lt;/div&gt;&lt;div&gt;IA_W_LC：前两个IA通过组合触发器触发的新IA&lt;/div&gt;" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
           <mxGeometry x="-650" y="2280" width="370" height="30" as="geometry" />
         </mxCell>
-        <mxCell id="h0tccU7lTHysjUieuKmg-20" value="" style="endArrow=none;dashed=1;html=1;dashPattern=1 3;strokeWidth=2;rounded=0;" edge="1" parent="1">
+        <mxCell id="h0tccU7lTHysjUieuKmg-20" value="" style="endArrow=none;dashed=1;html=1;dashPattern=1 3;strokeWidth=2;rounded=0;" parent="1" edge="1">
           <mxGeometry width="50" height="50" relative="1" as="geometry">
             <mxPoint x="-510" y="2260" as="sourcePoint" />
             <mxPoint x="-510" y="1900" as="targetPoint" />
           </mxGeometry>
+        </mxCell>
+        <mxCell id="-yUFTyaOagfAc9hKJpYV-1" value="" style="endArrow=classic;html=1;rounded=0;" edge="1" parent="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="1220" y="790" as="sourcePoint" />
+            <mxPoint x="1780" y="790" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="-yUFTyaOagfAc9hKJpYV-2" value="预输入帧" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="1241" y="800" width="339" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="-yUFTyaOagfAc9hKJpYV-3" value="" style="endArrow=none;dashed=1;html=1;dashPattern=1 3;strokeWidth=2;rounded=0;" edge="1" parent="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="1592.71" y="1050" as="sourcePoint" />
+            <mxPoint x="1592.71" y="790" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="-yUFTyaOagfAc9hKJpYV-4" value="预输入结束" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="1550" y="750" width="86" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="-yUFTyaOagfAc9hKJpYV-5" value="尝试触发预输入对应IA" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="1470" y="862.5" width="250" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="-yUFTyaOagfAc9hKJpYV-6" value="尝试触发&lt;div&gt;高GA优先级的IA&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="1600" y="975" width="120" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="-yUFTyaOagfAc9hKJpYV-7" value="无输入限制" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="1600" y="800" width="100" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="-yUFTyaOagfAc9hKJpYV-9" value="" style="endArrow=classic;html=1;rounded=0;" edge="1" parent="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="1730" y="862.5" as="sourcePoint" />
+            <mxPoint x="1730" y="1040" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="1730" y="902.5" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="-yUFTyaOagfAc9hKJpYV-10" value="" style="endArrow=none;dashed=1;html=1;dashPattern=1 3;strokeWidth=2;rounded=0;" edge="1" parent="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="1740" y="1050" as="sourcePoint" />
+            <mxPoint x="1740" y="790" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="-yUFTyaOagfAc9hKJpYV-12" value="检测正常输入IA" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="1610" y="920" width="100" height="30" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>
