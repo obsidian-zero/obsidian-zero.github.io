@@ -20,7 +20,7 @@ CharacterMovementComponent(简称CMC)是Unreal Engine中角色移动的核心组
 
 <!-- more -->
 
-## 一、CMC运动的基本组成
+# 一、CMC运动的基本组成
 
 角色的最终运动是由多个来源共同作用的结果：
 
@@ -30,7 +30,7 @@ CharacterMovementComponent(简称CMC)是Unreal Engine中角色移动的核心组
 4. **根运动源** - 程序化生成的各类运动力
 5. **移动模式特定逻辑** - 行走、飞行、游泳等不同模式的处理逻辑
 
-## 二、PerformMovement详细流程图
+# 二、PerformMovement详细流程图
 
 ![](./UE_CMCPerformMovement/PerformMovement.png)
 
@@ -99,11 +99,9 @@ flowchart TD
 
 
 
-## 三、运动计算流程详解
+# 三、运动计算流程详解
 
-## PerformMovement执行流程详解
-
-### 1. 初始化与状态保存
+## 初始化与状态保存
 
 ```cpp
 void UCharacterMovementComponent::PerformMovement(float DeltaSeconds)
@@ -132,7 +130,7 @@ void UCharacterMovementComponent::PerformMovement(float DeltaSeconds)
 - **状态保存**：记录移动前的速度和位置，为后续计算和可能的回滚做准备
 - **性能优化**：使用`FScopedCapsuleMovementUpdate`创建作用域更新，优化多次移动组件调用
 
-### 2. 基础移动更新与根运动源清理
+## 基础移动更新与根运动源清理
 
 ```cpp
 // 处理基于物体的移动(如站在移动平台上)
@@ -162,7 +160,7 @@ if (bHasRootMotionSources && !CharacterOwner->bClientUpdating && !CharacterOwner
    - 这些源在结束时可能会修改速度(通过限制或覆写)
    - 清理操作的时机精心设计，在应用累积力和处理待定发射之前，以确保根运动源的结束行为不会被覆盖
 
-### 3. 应用累积力和更新移动前状态
+## 应用累积力和更新移动前状态
 
 ```cpp
 // 应用累积的力
@@ -181,7 +179,7 @@ HandlePendingLaunch();
 - **角色状态更新**：更新基于当前状态的角色属性
 - **待定发射**：处理如跳跃等需要立即应用的突发力
 
-### 4. 跟踪外部速度变化
+## 跟踪外部速度变化
 
 ```cpp
 // Update saved LastPreAdditiveVelocity with any external changes to character Velocity that happened since last update.
@@ -200,7 +198,7 @@ if (CurrentRootMotion.HasAdditiveVelocity())
 - **解决方案**：计算上次更新后发生的外部速度调整，并相应更新基准速度
 - **目的**：确保添加型根运动源能够在复杂情况下(如碰撞后)正确应用，避免不合理的行为(如穿墙)
 
-### 5. 准备和应用根运动
+## 准备和应用根运动
 
 ```cpp
 // 准备动画根运动
@@ -255,7 +253,7 @@ if (CurrentRootMotion.HasOverrideVelocity() || HasAnimRootMotion())
    - 叠加型根运动在原有速度基础上添加影响
    - 特殊处理坠落状态时的速度合成
 
-### 6. 执行移动状态的物理逻辑
+## 执行移动状态的物理逻辑
 
 ```cpp
 // 执行实际的物理移动
@@ -292,7 +290,7 @@ void UCharacterMovementComponent::StartNewPhysics(float DeltaTime, int32 Iterati
 
 在每种移动模式下，都会做出特别的处理应实现符合人类直觉的移动方式。这里暂且不展开讨论
 
-### 7. 应用旋转和收尾工作
+## 应用旋转和收尾工作
 
 ```cpp
 // 应用物理旋转
@@ -326,11 +324,11 @@ OnMovementUpdated(DeltaSeconds, OldLocation, OldVelocity);
 - **优先级**：动画根运动旋转 > 根运动源旋转 > 物理旋转
 - **移动完成通知**：触发回调，通知其他系统移动已完成
 
-## 四、根运动源系统
+# 四、根运动源系统
 
 根运动源系统允许程序化地控制角色移动，是动画根运动的补充。
 
-### 1. 根运动源类型
+## 根运动源类型
 
 CMC支持多种类型的根运动源：
 
@@ -340,7 +338,7 @@ CMC支持多种类型的根运动源：
 - **MoveToDynamicForce**: 将角色移动到动态变化的位置
 - **JumpForce**: 模拟跳跃行为的力
 
-### 2. 添加根运动源
+## 添加根运动源
 
 ```cpp
 uint16 FRootMotionSourceGroup::ApplyRootMotionSource(TSharedPtr<FRootMotionSource> SourcePtr)
@@ -356,7 +354,7 @@ uint16 FRootMotionSourceGroup::ApplyRootMotionSource(TSharedPtr<FRootMotionSourc
 }
 ```
 
-### 3. 根运动源参数
+## 根运动源参数
 
 每个根运动源都可以配置多个参数：
 
@@ -366,7 +364,7 @@ uint16 FRootMotionSourceGroup::ApplyRootMotionSource(TSharedPtr<FRootMotionSourc
 - **强度**: 力的强度或运动速度
 - **结束速度设置**: 根运动结束时的速度处理方式
 
-### 4. 根运动优先级排序
+## 根运动优先级排序
 
 CMC严格遵循特定的优先级规则处理多个运动来源：
 
@@ -376,7 +374,7 @@ CMC严格遵循特定的优先级规则处理多个运动来源：
 4. **叠加型根运动源**: 按优先级顺序叠加
 5. **常规移动计算**: 最低优先级
 
-## 结语
+# 结语
 
 CharacterMovementComponent的PerformMovement流程展示了Unreal Engine如何处理复杂的角色移动逻辑，特别是根运动的应用。
 
